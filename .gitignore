@@ -4,6 +4,10 @@ checkpoints/
 clips/
 logs/
 
+# Build artifacts
+*.egg-info/
+lynxai.egg-info/
+
 # Python cache
 __pycache__/
 *.py[cod]

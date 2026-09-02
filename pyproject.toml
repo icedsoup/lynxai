@@ -19,9 +19,12 @@ ppo = [
     "stable-baselines3",
 ]
 
+[project.scripts]
+lynxai = "lynxai.cli:main"
+
 [tool.setuptools]
-package-dir = {"" = "."}
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-where = [".", "src"]
-include = ["lynxai*", "utils*", "app*"]
+where = ["src"]
+include = ["lynxai*"]

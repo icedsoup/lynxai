@@ -1,7 +1,0 @@
-numpy
-pyyaml
-torch
-gymnasium
-
-[ppo]
-stable-baselines3

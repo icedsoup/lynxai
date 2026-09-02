@@ -6,8 +6,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from utils.config import load_config
-from utils.paths import CHECKPOINT_DIR, CLIPS_DIR, DATA_DIR, LOG_DIR, PROJECT_ROOT, RUNS_DIR, ensure_directories
+from lynxai.utils.config import load_config
+from lynxai.utils.paths import CHECKPOINT_DIR, CLIPS_DIR, DATA_DIR, LOG_DIR, PROJECT_ROOT, RUNS_DIR, ensure_directories
 
 
 def _check_python() -> tuple[bool, str]:
