@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: lynxai
+Version: 0.1.0
+Summary: lynxai research package
+Requires-Python: >=3.10
+Requires-Dist: numpy
+Requires-Dist: pyyaml
+Requires-Dist: torch
+Requires-Dist: gymnasium
+Provides-Extra: ppo
+Requires-Dist: stable-baselines3; extra == "ppo"

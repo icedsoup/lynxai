@@ -1,0 +1,18 @@
+# Project runtime artifacts
+runs/
+checkpoints/
+clips/
+logs/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+.env
+
+# Editor/editor state
+.vscode/
+.DS_Store
