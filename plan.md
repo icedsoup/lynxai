@@ -245,6 +245,16 @@ A game-state feed is not automatically a control or reset API. Demo playback is 
 
 Create an integration note under `docs/` with the chosen mechanisms, reproducible setup steps, observed limitations, fallback options, and a capability matrix. Do not make an undocumented memory reader or invasive game modification a hidden prerequisite.
 
+### Local bot training and external input controller
+
+The intended CS2 training setup is the user's own local/private server or Workshop map with CS2's built-in bots. Begin with the narrow target-acquisition task, then enable bot combat as the task progression allows.
+
+Prefer a lightweight external controller using screen capture and documented host input facilities, without injecting code, reading game memory, or modifying game binaries. Keep model inference separate from input execution through a small explicit action interface with bounded durations, cancellation, and a controller watchdog. Process separation is for reliability and inspection as well as a precaution to avoid flagging anti-cheat.
+
+Define input ownership explicitly: manual mode emits no model inputs; agent mode applies bounded actions; manual takeover pauses the agent, cancels pending motion, releases controller-held buttons, and marks the episode as interrupted. Keep an independent emergency stop available while the agent is active. Do not merge unrecorded human intervention into policy rollouts or attempt to suppress the user's keyboard. Probe how physical and generated inputs interact on the actual host, including held keys during takeover, before relying on this behavior. Log the active mode, interventions, and requested/applied actions; show a visible armed/paused indicator.
+
+The user has contacted Valve for clarification about private, bot-only research and the proposed external controller and has recieved a greenlight from Valve, though been warned that VAC could still flag lynxai if suspicious. Therefore, input architecture must ideally avoid detection, be fully external, prioritize transparent operation, and reliable manual control.
+
 ### Minimal live probe
 
 1. Open one controlled scenario and capture a labeled sample frame.
@@ -707,6 +717,7 @@ If the learning target fails, diagnose the task/API/reward/trainer before adding
 Work:
 
 - Select the host and document tested capture, input, event, and scenario/reset mechanisms.
+- Probe the external controller's manual/agent ownership, visible state, takeover, watchdog, and emergency release before autonomous episodes.
 - Implement the first target-acquisition scenario and a live probe command.
 - Calibrate smooth mouse execution and control rate; measure event delay and reset time. Probe mouse buttons, WASD, jump, crouch, and reload, including simultaneous inputs and cleanup. Evaluate ABCurves as an optional motor candidate without making it a prerequisite.
 - Record short traces and test stop, focus loss, stale capture, and failed reset behavior.
