@@ -83,7 +83,7 @@ These defaults make development actionable. Change them when an experiment or in
 | RL implementation | Stable-Baselines3 PPO | Establish a trusted baseline before implementing an algorithm |
 | Smoke policy | Small multilayer perceptron (MLP) on the existing numeric observations | Verify training without introducing a rendering project |
 | CS2 policy | Small convolutional neural network (CNN), policy head, and value head | A manageable first visual policy |
-| First combat actions | Bounded discrete aiming increments plus fire | Aiming is necessary to solve variable target positions |
+| First combat actions | Bounded aim intent plus fire, executed through smooth mouse motion | Separate policy decisions from motor output; retain a discrete reference before comparing continuous policy outputs |
 | First runtime | One game host, one environment, synchronous collection and updates | Minimize synchronization and policy-version ambiguity |
 | Experiment records | Local JSON/JSONL records and TensorBoard when training begins | Usable offline, with exportable source data |
 | Interface | CLI first; PySide6 desktop lab after the backend works | Keep operations testable while preserving the visual product goal |
@@ -303,7 +303,7 @@ Use a single frame for the first stationary task. Compare it with four-frame his
 
 ### Initial action space
 
-For target acquisition, use a factorized discrete action space such as `MultiDiscrete([3, 3, 2])`:
+The first reference policy for target acquisition uses a factorized discrete action space such as `MultiDiscrete([3, 3, 2])`. These are policy intents; mouse execution should produce smooth motion over the action interval rather than a single abrupt displacement:
 
 | Factor | Values |
 |---|---|
@@ -317,7 +317,17 @@ The input adapter maps increments to calibrated mouse displacement on the chosen
 
 Start with a nominal **10 decisions per second** if capture and input can sustain it. This is a measured operating choice, not a required game frame rate. Fire is a held button state for the interval; a neutral action releases it. Bound camera movement and implement release-all independently of policy inference.
 
-For movement tasks, add strafe and forward/back factors with neutral values. Keep impossible opposing directions out of the mapping. Add jumping, reload, weapon changes, secondary fire, and objective interactions only when the scenario requires them. Continuous aim is a later comparison with its own policy distribution and checkpoint compatibility rules.
+The initial CS2 input adapter should support relative mouse movement, mouse button press/release, WASD, jump, crouch, and reload. Probe the full set independently; stationary target-acquisition training initially enables only aiming and fire, and movement tasks enable the remaining controls progressively. Support simultaneous aim/fire/movement and explicit held-button state. Release all inputs on stop or failure, and keep impossible opposing movement directions out of the mapping. Use fixed loadouts first; buying, grenades, and planting/defusing follow later.
+
+### Smooth mouse control and humanlike movement
+
+Smooth, continuous mouse execution is an early integration goal. Separate policy decisions from a higher-rate motor controller with bounded speed/acceleration, timely replanning, and cancellation on reset or stop. Measure achievable timing on the actual host; generating 1 kHz samples does not prove 1 kHz game input. Record requested intent and actual applied motion/timestamps. Reset motor state between episodes and record its version in checkpoints.
+
+After the discrete reference works, compare bounded continuous yaw/pitch policy outputs. Combining continuous aiming with discrete buttons requires a tested policy/action distribution; do not assume SB3 PPO supports an arbitrary mixed action space. Version the action contract and validate save/load, clipping, timing, and motor state. Smooth execution does not need to wait for this policy comparison.
+
+[ABCurves](https://github.com/optima-manent/ABCurves) is a candidate motor component, not a selected dependency. Its Continuous Planner follows changing targets, and its Renderer generates integer mouse reports. The [integration guide](https://github.com/optima-manent/ABCurves/blob/main/docs/INTEGRATION.md) leaves application mapping and execution to the integrator. Probe sensitivity, view-angle/count conversion, moving-target response, execution feedback, and cancellation; compare against a simple interpolator under matched conditions. Keep target selection in the policy without hidden ground-truth coordinates, and distinguish supplied motor skill from learned aiming. Record revision, model provenance, and applicable licenses before use; do not adopt anti-cheat claims as project goals.
+
+Humanlike behavior is more than smoothness. Compare permitted human demonstrations on aim speed, acceleration, jerk (changes in acceleration), corrections, reaction timing, and key hold/transition patterns. Preserve deliberate fast flicks and stops. Add bounded style rewards only as separate experiments, and ensure stillness cannot earn an easy smoothness bonus. Score effectiveness and style separately. WASD remains digital; humanlike movement comes from timing, duration, and coordination with aiming.
 
 ### Reward design
 
@@ -334,6 +344,8 @@ Use a fixed episode cap so doing nothing does not create an unlimited episode. A
 Sparse reward may make exploration slow. First verify that scripted/human actions can earn it. Then compare one change at a time: demonstration initialization, easier target placement, or a bounded shaping term such as verified incremental damage. Keep the sparse baseline for reference.
 
 Avoid unconditional survival rewards initially: they can reward inactivity. Avoid repeated rewards from cumulative event counters. Distance-to-target or aim-error shaping requires a trustworthy signal and belongs to a separately labeled experiment. Potential-based shaping is an option when its state, terminal handling, and discount assumptions are satisfied.
+
+The broader combat objective includes verified kills, incremental damage, and staying alive while accomplishing the task. Keep the sparse reference, then compare bounded damage and survival terms independently with weights/components logged. Survival can mean avoiding death, surviving a bounded threatened scenario, or completing an objective; avoid unlimited points for hiding safely. No explicit flanking or other named tactical-route reward is planned: inspect whether tactics emerge from observations and outcomes, without assuming they will. Humanlike style is a separate measured objective and must not dominate useful play.
 
 **Reward is an optimization signal, not the final score.** Report success, time to success, accuracy where measurable, and deaths independently of shaped return. Changing reward weights must not silently change the meaning of the evaluation suite.
 
@@ -608,6 +620,16 @@ Each clip records run, episode, scenario, policy/checkpoint version, timestamps,
 
 Encoding and UI refresh must not block the action loop. Drop optional preview frames before allowing recording backlog to corrupt observations or actions. Track dropped frames and preserve synchronization metadata.
 
+### OBS replay-buffer integration
+
+Add an optional OBS recording backend after the live loop works. The [obs-websocket protocol](https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md#savereplaybuffer) exposes replay-buffer status/start/save requests and saved-clip events. Verify requests, recording source, and timestamps on the chosen OBS version. Recording requests run outside the control loop; missing OBS must not prevent training.
+
+Start with configurable triggers for knife kills, multi-kills, unusual movement, narrow escapes, and a manual marker. Keep pre-event footage, wait for the configured post-event interval, then save. Verify the resulting file and attach run/checkpoint, event time, mode, and trigger reason. Enforce cooldowns and storage limits. These nominate interesting candidates; they do not guarantee humor. Later human labels/preferences can rank funny/cool clips. Preserve representative failures and keep clip scores separate from training rewards.
+
+### Obsidian research visualization
+
+Add optional export into a configured project folder in an Obsidian vault: Markdown experiment notes, embedded metric plots, clip links, and links between scenarios, runs, and parent/child checkpoints. This provides a navigable research history; live controls remain in the planned GUI. Use ordinary files first and optional [Obsidian URI links](https://help.obsidian.md/Extending+Obsidian/Obsidian+URI) to open notes. Give generated records stable identities and preserve human-authored notes. Raw run artifacts remain the source of truth, so training and the GUI do not require Obsidian.
+
 ## 12. Runtime, performance, and reliability
 
 ### Measure the whole loop
@@ -687,7 +709,7 @@ Work:
 
 - Select the host and document tested capture, input, event, and scenario/reset mechanisms.
 - Implement the first target-acquisition scenario and a live probe command.
-- Calibrate camera increments and control rate; measure event delay and reset time.
+- Calibrate smooth mouse execution and control rate; measure event delay and reset time. Probe mouse buttons, WASD, jump, crouch, and reload, including simultaneous inputs and cleanup. Evaluate ABCurves as an optional motor candidate without making it a prerequisite.
 - Record short traces and test stop, focus loss, stale capture, and failed reset behavior.
 
 **Acceptance:** a scripted/human probe produces verified outcomes; 100 attempted reset-and-episode cycles achieve at least 99% valid completion without manual correction; every failure is reported; event counts match the probe evidence; held inputs are released in all exercised failure cases. Publish latency distributions and demonstrate that the chosen control rate meets its declared freshness/deadline limits.
@@ -729,7 +751,7 @@ Work:
 Work:
 
 - Add the monitor GUI and checkpoint/run browser using existing backend operations.
-- Add rolling highlights, failure clips, matched checkpoint comparisons, and report export.
+- Add rolling highlights, failure clips, matched checkpoint comparisons, and report export. Optional integrations include OBS replay-buffer capture and Obsidian research visualization, each able to degrade cleanly when unavailable.
 - Rehearse pause/stop/resume and an unattended session with resource limits and fault handling.
 - Document a complete example experiment from configuration to interpretation.
 
@@ -759,6 +781,8 @@ These are the immediate backlog, in order. They replace generic instructions to 
 - [ ] **Run the M1 experiment.** Collect the three-seed learning evidence and record what passed or failed.
 - [ ] **Complete the CS2 capability note.** In parallel with the smoke work where practical, identify the game host and test capture, input, outcomes, and reset. Do not guess capabilities from the cloud environment.
 
+After M1, M2 includes the smooth-mouse/core-input probe in section 7. Later style/mode, OBS, Obsidian, self-play, and chat work is staged in sections 11 and 15; it must not silently expand the immediate smoke milestone.
+
 Every coding task should identify its milestone, define its validation, and update documentation when a proposed interface becomes real. Avoid building unrelated future modules simply because they appear in the target architecture.
 
 ## 15. Later research program
@@ -781,6 +805,32 @@ These directions preserve the broader vision. They are a menu of experiments wit
 | Hierarchical skills | Multiple independently useful skills | Monolithic policy versus a small skill selector | Better task completion or sample efficiency with controlled complexity |
 | Custom PPO | Trusted library results and diagnostic tests | Own implementation versus library on Smoke2D first | Correct updates and comparable results under matched conditions |
 | Multiple machines | Single-host profiling identifies a bottleneck | Local inference/learning versus separated workloads | End-to-end throughput gain after network delay, serialization, and recovery costs |
+
+### Play styles, fun modes, and emergent tactics
+
+The desired CS2 agent should learn effective, humanlike play through core controls and outcomes, without rewards prescribing tactics such as flanking. Whether intelligent tactics emerge is an experimental question. Add separate versioned task/reward profiles with evaluation suites and checkpoint lineage. These are later branches, not M1 requirements.
+
+| Mode or extension | Initial design | Evidence and constraints |
+|---|---|---|
+| Humanlike combat | Outcome-based play plus separately tested style objectives | Compare human demonstrations and the sparse reference; report effectiveness and style |
+| Knife-only | Fixed knife loadout; positive combat reward only for verified knife damage/eliminations | Disable firearms for this task, verify weapon-specific events, and report survival and success |
+| Pacifist | Survive a bounded threatened scenario with firing disabled | Interpret the requested mode as living without shooting; distinguish active evasion from safe inactivity |
+| Movement / bunny hopping | Dedicated movement scenario, then optional transfer into combat | Verify current game/server movement rules; measure traversal speed/control and consistency without promising perfect bhopping |
+| Funny behavior | Human-tagged clips and preference comparisons, starting with the modes above | Humor is subjective; optional preference learning needs held-out human ratings and a baseline |
+| Weapon buying | Fixed loadouts first; later a separate buy-phase decision | Verify purchase feedback, budgets, and round transitions; separate buying from frame-by-frame aiming |
+| Grenades and objectives | One grenade skill or plant/defuse task after core combat/movement works | New task/action versions, demonstrations where useful, and regression checks |
+
+Keep the first input set to mouse/buttons, WASD, jump, crouch, and reload, enabling combinations progressively. Let positioning and timing emerge from task outcomes, then analyze behavior. Movement drills may use task-specific rewards; their results do not establish broader combat competence.
+
+### Autonomous training and self-play
+
+Autonomous training first means budgeted learning against controlled scenarios/bots with periodic durable checkpoints, clean stop/resume, and frozen evaluation. Keep periodic and best validated snapshots, record parent/child run lineage, and promote candidates only after regression checks. Do not endlessly overwrite the last good model.
+
+Actual self-play adds agent-versus-agent or historical opponent pools after reliable duels. Retain frozen opponents and their episode identities, evaluate against a stable held-out pool, and preserve a recoverable previous default. Improvement or entertaining behavior is an outcome to measure, not a guarantee.
+
+### Local LLM and CS2 chat — distant extension
+
+Keep an optional local language model separate from the action policy. It may later receive a small game-event summary and decide whether to propose a short chat message. Begin with a local preview; enabled game-chat output uses a verified host input path, rate limits, and an off switch. Chat focus changes keyboard ownership: release gameplay controls, send, and verify return to gameplay. Incoming chat is untrusted text and cannot issue system commands or change training settings. Keep chat outside the control/learning loop and standard evaluation runs, and test in controlled authorized scenarios. This feature is not implemented or required by earlier milestones.
 
 ### Prediction as a separate scientific question
 
@@ -841,5 +891,9 @@ Use these maintained references when implementing the relevant milestone. Check 
 - [Stable-Baselines3: RL tips](https://stable-baselines3.readthedocs.io/en/master/guide/rl_tips.html) — evaluation and practical experiment guidance.
 - [PyTorch reproducibility notes](https://docs.pytorch.org/docs/stable/notes/randomness.html) — seeding and limits of determinism across platforms and releases.
 - [Valve Developer Community: Counter-Strike 2 Workshop Tools](https://developer.valvesoftware.com/wiki/Counter-Strike_2_Workshop_Tools) — starting point for investigating controlled maps and host tooling; verify each needed capability in M2.
+
+- [ABCurves](https://github.com/optima-manent/ABCurves) and its [integration guide](https://github.com/optima-manent/ABCurves/blob/main/docs/INTEGRATION.md) — candidate humanlike mouse-motion generation; CS2 mapping and timing need validation.
+- [OBS WebSocket protocol](https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md) — optional replay-buffer control and saved-clip notifications.
+- [Obsidian URI documentation](https://help.obsidian.md/Extending+Obsidian/Obsidian+URI) — optional links into exported research notes.
 
 The current code and configurations remain the source of truth for what runs today. This plan defines what to build next and the evidence required to call it progress.
