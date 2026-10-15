@@ -1,3139 +1,846 @@
-# Project Bible: Teaching an AI to Play CS2
+# lynxai: Foundational Project Plan
 
-> A long-term portfolio/research project for building, training, evaluating, and visualizing a reinforcement-learning agent for a Counter-Strike-style FPS, with CS2 as the real target and a tiny 2D game used only as a smoke test.
->
-> **Core philosophy:** get to the real CS2 experimentation quickly, keep the first agent extremely small, make the training stack reproducible, and grow the project through modular experiments instead of replacing the whole system every time a new idea appears.
+> Build a research platform that learns progressively more useful Counter-Strike 2 behaviors, makes its learning visible, and produces experiments that another person can understand and reproduce.
 
----
+**Status:** foundational design; most of the system is still to be implemented. Section 2 separates existing capabilities from planned ones. New commands, schemas, directories, and numerical targets below are proposed unless explicitly marked as implemented.
 
-## 0. The one-page vision
+**Guiding principle:** build the smallest complete experiment that answers the next important question. CS2 is the target; the 2D environment exists to verify the learning infrastructure.
 
-The project starts simple:
+## How to use this plan
 
-**Observation**
-- A low-resolution image or short sequence of images from a controlled CS2 test environment.
+Read sections 1–3 for direction, sections 4–12 when implementing a subsystem, and sections 13–14 when choosing the next task. Milestones are ordered by dependencies and have explicit acceptance criteria. Complete a milestone by linking its evidence, not merely by checking off its code.
 
-**Actions**
-- `W`
-- `A`
-- `S`
-- `D`
-- `LMB`
-- optionally `RMB` once the basics work
+| Topic | Where to look |
+|---|---|
+| Vision, scope, and existing code | [1. Vision](#1-vision-and-definition-of-success), [2. Current foundation](#2-current-foundation), [3. Decisions](#3-working-decisions-and-scope) |
+| Architecture and environment integration | [4. Architecture](#4-system-architecture), [5. Contracts](#5-core-contracts), [6. CS2 integration](#6-cs2-integration-and-feasibility) |
+| Agent and experiment design | [7. First tasks](#7-first-tasks-observations-actions-and-rewards), [8. Learning](#8-learning-strategy), [9. Evaluation](#9-evaluation-and-research-method) |
+| Reproducibility and product experience | [10. Artifacts](#10-configuration-data-and-checkpoints), [11. CLI and GUI](#11-cli-gui-and-visual-explanations), [12. Runtime](#12-runtime-performance-and-reliability) |
+| Execution and future work | [13. Milestones](#13-milestones-and-acceptance-criteria), [14. Next tasks](#14-next-implementation-tasks), [15. Research](#15-later-research-program) |
+| Risks and maintenance | [16. Risks](#16-risks-and-decision-points), [17. Maintenance](#17-maintaining-this-plan-and-publishing-results), [18. References](#18-technical-references) |
 
-**Reward**
-- Positive reward for kills.
-- Negative reward for dying.
-- Later: round outcome, damage, survival, objective progress, prediction accuracy, etc.
+## 1. Vision and definition of success
 
-**Learning**
-- Start with behavioral cloning from human demonstrations.
-- Then fine-tune/improve with reinforcement learning.
-- PPO is a strong first RL algorithm to investigate; it can initially be used through an existing implementation, then implemented yourself later if desired.
+lynxai should become a personal ML research lab for learning to play CS2. It should support observing the game, selecting actions, collecting outcomes, training policies, evaluating frozen checkpoints, and explaining the results through metrics and video.
 
-**Engineering**
-- Python is the glue/orchestration language.
-- PyTorch is the core neural-network/ML framework.
-- Gymnasium-style environment interfaces keep the agent independent from the game.
-- OpenCV/Python image processing can handle perception preprocessing.
-- TensorBoard or Weights & Biases can handle experiment metrics.
-- A custom GUI sits on top of the same backend used by the CLI.
+The long-term agent should develop useful perception, aiming, movement, combat, memory, and eventually objective-level behavior. The application should make it easy to create an experiment, watch it run, inspect a failure, compare checkpoints, and decide what to try next.
 
-**Long-term capabilities**
-- Automatic highlights/clips.
-- Full checkpointing and restore/time travel.
-- Training/evaluation toggles.
-- Overnight automated training in a controlled environment.
-- Spectator/demonstration learning.
-- Player-behavior prediction.
-- Skill-specific curriculum training.
-- Scenario generation.
-- Memory/temporal models.
-- Self-play between agents in a controlled environment.
-- Human-vs-AI behavioral analysis.
+The project has three equally important outputs:
 
----
+1. **A learning agent:** measurable progress on increasingly difficult, controlled CS2 tasks.
+2. **A reliable experiment system:** repeatable scenarios, traceable datasets and checkpoints, recoverable runs, and fair comparisons.
+3. **An understandable research story:** evidence showing what improved, what failed, and what each improvement cost in data, time, and compute.
 
-# 1. Project goals
+A **policy** is the model that chooses actions from observations. **Reinforcement learning (RL)** improves that policy using outcomes from its own actions; **behavioral cloning (BC)** learns to imitate recorded actions. An **episode** is one attempt at a task, from reset to an ending condition. These concepts stay the same as the project moves from the 2D simulation to CS2.
 
-## Primary goal
+### First useful release
 
-Build a visually understandable, reproducible AI system that can progressively learn useful FPS behaviors from observations and rewards, while documenting *why* each design choice works or fails.
+The first useful release completes this workflow on one narrow CS2 task:
 
-The strongest portfolio framing is not:
+1. Select a versioned scenario and experiment configuration.
+2. Run a baseline and train a small policy within a fixed budget.
+3. Save a checkpoint, reload it, and evaluate it without updating weights.
+4. Compare it with the baseline on held-out scenario variations.
+5. Open a report with raw results, learning curves, and representative clips.
 
-> â€œI made a CS2 bot.â€
+The initial task is stationary target acquisition: aim and fire at a target whose position varies within a controlled range. Movement and a returning-fire opponent follow after this loop works. Success on this task establishes a component of CS2 play, not full match competence.
 
-It is:
+### Research success
 
-> **â€œI designed, trained, evaluated, and iteratively improved a reinforcement-learning agent for an FPS, studying the effects of observation design, action-space design, reward functions, imitation learning, temporal modeling, and prediction.â€**
+An improvement claim needs a declared metric, repeated training runs, a fixed evaluation procedure, and an explanation of uncertainty. A negative result can still be a successful experiment if it is reproducible and informs the next decision.
 
-That framing makes the project feel like a serious ML systems/research project rather than a one-off game script.
+The core comparison is **PPO from scratch versus behavioral cloning versus behavioral cloning followed by PPO**, under the same observation, action, and scenario definitions. Demonstration collection and pretraining costs must be visible. Prediction and memory are later experiments, not assumed improvements.
 
-## Secondary goals
+## 2. Current foundation
 
-1. Make experiments extremely easy to run.
-2. Make every trained agent reproducible.
-3. Make it obvious how the agent improved over time.
-4. Make failure easy to inspect rather than mysterious.
-5. Build a clean GUI that makes the training process fun to watch.
-6. Produce automatic videos, graphs, and experiment summaries for the portfolio.
+This inventory reflects the repository at commit `28b0b22` (`smoke2d`). Update it as implementation advances.
 
----
+| Area | Implemented now | Remaining work |
+|---|---|---|
+| Package | `src/lynxai`, `python -m lynxai`, and the `lynxai` entry point | Development documentation, pinned dependency workflow, CI |
+| Diagnostics | `lynxai doctor` checks Python, PyTorch, CUDA availability, writable directories, and baseline config loading | Separate core, training, and CS2 host checks |
+| Configuration | YAML loaded into dataclasses in `utils/config.py` | Schema versions, value validation, unknown-key rejection, resolved config snapshots |
+| Paths | Runtime directory helpers in `utils/paths.py` | Configurable artifact root and installed-package behavior |
+| Simulation | `environments/smoke2d.py`: five numeric observations, four actions, goal/fall/timeout outcomes | Gymnasium compatibility, package relocation, trainer integration |
+| Tests | Six tests covering simulation behavior and package namespace | Contract, training, checkpoint, evaluation, and integration tests |
+| ML dependencies | PyTorch and Gymnasium declared; Stable-Baselines3 available through the `ppo` extra | A policy, training command, rollout collection, and evaluation runner |
+| CS2 and application | No CS2 adapter or functioning GUI | Integration feasibility, control loop, demonstrations, recording, UI |
 
-# 2. Testing strategy: controlled first, online-adjacent later
+During cloud setup, the six existing tests, CLI diagnostics, dependency checks, and source/wheel builds passed with CPU PyTorch. This validates the existing foundation only. No learned policy or CS2 interaction has been demonstrated.
 
-The project should be designed around **controlled experimentation first**, but the architecture should leave room for later online-oriented testing that does not put an autonomous agent into public matchmaking or attempt to bypass anti-cheat.
+Two existing details need deliberate migration:
 
-Think of testing as four tiers:
+- The simulation currently lives outside `src/lynxai`, so configured package discovery does not include it in the installed distribution.
+- Its API returns `obs` from reset and a four-item tuple from step. The target Gymnasium API returns `(obs, info)` and distinguishes termination from truncation.
+
+The existing `configs/baseline.yaml` is a scaffold. Its observation, action, and reward settings do not define an implemented CS2 experiment and should not silently become the research baseline.
+
+## 3. Working decisions and scope
+
+These defaults make development actionable. Change them when an experiment or integration constraint supplies a reason, and record the decision.
+
+| Decision | Initial choice | Reason |
+|---|---|---|
+| Language and ML | Python and PyTorch | Match the current code and research ecosystem |
+| Environment API | Gymnasium | Explicit spaces, episode semantics, and established tooling |
+| RL implementation | Stable-Baselines3 PPO | Establish a trusted baseline before implementing an algorithm |
+| Smoke policy | Small multilayer perceptron (MLP) on the existing numeric observations | Verify training without introducing a rendering project |
+| CS2 policy | Small convolutional neural network (CNN), policy head, and value head | A manageable first visual policy |
+| First combat actions | Bounded discrete aiming increments plus fire | Aiming is necessary to solve variable target positions |
+| First runtime | One game host, one environment, synchronous collection and updates | Minimize synchronization and policy-version ambiguity |
+| Experiment records | Local JSON/JSONL records and TensorBoard when training begins | Usable offline, with exportable source data |
+| Interface | CLI first; PySide6 desktop lab after the backend works | Keep operations testable while preserving the visual product goal |
+| Storage | Local artifacts with explicit manifests and retention limits | Avoid an early database or hosted-service dependency |
+
+### Boundaries
+
+Training uses local, private, or otherwise authorized controlled CS2 scenarios. Public matchmaking and anti-cheat evasion are outside the project. Human demonstrations, demos, and spectator material are research inputs where collection and use are permitted.
+
+The first release does not require a full match, multiple agents, grenades, economy management, a world model, a large transformer, distributed training, or a custom PPO implementation. These remain possible extensions after the basic loop produces credible results.
+
+The 2D environment remains a small regression fixture. Add only what is needed to validate contracts, training, checkpointing, and evaluation. Its model weights are not expected to transfer to CS2; its infrastructure should.
+
+### Development machine versus game host
+
+The cloud environment supports package development, tests, the 2D task, and processing recorded data. Running CS2 additionally requires a suitable game installation, graphics/display support, a supported capture and input path, and sufficient compute. None of those capabilities is established by a passing cloud `doctor` command.
+
+Select and document the actual game host OS, GPU, display configuration, and integration methods during the CS2 feasibility milestone. Keep platform-specific code inside the CS2 adapter. A second machine is an optimization to investigate after profiling the single-host system.
+
+## 4. System architecture
+
+Keep the policy independent of game-specific capture, input, and reset mechanisms. Use the same experiment operations from both the CLI and GUI.
+
+```mermaid
+flowchart TD
+    CLI[CLI] --> Runner[Experiment runner]
+    GUI[Lab GUI] --> Runner
+    Runner --> Collector[Rollout collector]
+    Collector --> Policy[Policy and value model]
+    Policy -->|action| Env[Environment adapter]
+    Env -->|observation, reward, episode status| Collector
+    Env --> Game[Smoke2D or controlled CS2]
+    Game --> Env
+    Collector -->|current-policy rollout| Trainer[PPO trainer]
+    Demos[Demonstration dataset] --> BC[Behavioral cloning]
+    BC --> Policy
+    Trainer -->|updated parameters| Policy
+    Runner --> Evaluator[Frozen evaluation]
+    Policy -->|checkpoint snapshot| Evaluator
+    Evaluator --> Env
+    Runner --> Artifacts[Configs, metrics, checkpoints, reports]
+    Evaluator --> Artifacts
+    Env --> Recorder[Video and event recorder]
+    Recorder --> Artifacts
+```
+
+Collection, updates, and evaluation are coordinated phases, not concurrent owners of one environment. Recording can run asynchronously through bounded queues.
+
+| Component | Responsibility |
+|---|---|
+| Experiment runner | Resolve config, create run, enforce lifecycle, dispatch collection/training/evaluation, handle stop and failure |
+| Environment adapter | Reset, expose spaces, apply actions, produce observations and rewards, report episode status |
+| CS2 backend | Capture frames, control inputs, receive events, configure scenarios, verify resets |
+| Observation pipeline | Crop, resize, normalize, stack history, validate freshness and shape |
+| Policy | Map observations and optional recurrent state to an action distribution and value estimate |
+| Trainer | Optimize the selected objective using valid data and record update diagnostics |
+| Evaluator | Run frozen policies against versioned suites and compute task metrics |
+| Artifact manager | Write manifests, metrics, checkpoints, dataset references, and reports |
+| Recorder | Align video with events and policy versions; preserve representative failures and highlights |
+
+Start with ordinary Python modules and a local worker process. Introduce service boundaries only when isolation or measured resource contention requires them.
+
+### Target code organization
+
+Create modules as their milestone needs them; this is not a request to generate empty scaffolding.
 
 ```text
-Tier 1  â†’  2D smoke test
-Tier 2  â†’  controlled CS2 / practice / custom environment
-Tier 3  â†’  replays, demos, spectating, and human-gameplay analysis
-Tier 4  â†’  sanctioned/private/experimental online-style testing with humans in the loop, when permitted
+src/lynxai/
+  cli.py                  # existing entry point; commands call the runner
+  app/                    # GUI and presentation
+  environments/           # Gymnasium environments, including Smoke2D
+    cs2/                  # capture, input, events, scenarios, reset
+  agents/                 # model definitions and inference
+  training/               # PPO integration and behavioral cloning
+  evaluation/             # suites, baselines, metrics, comparisons
+  experiments/            # run lifecycle and configuration resolution
+  data/                   # demonstration schemas and loaders
+  recording/              # video, event alignment, clips
+  artifacts/              # manifests, checkpoints, reports
+  utils/                  # focused shared helpers
+configs/                  # versioned experiment definitions
+scenarios/                # scenario specifications and split manifests
+tests/                    # unit, integration, and system tests
+docs/                    # setup, integration evidence, decisions, experiments
 ```
 
-The important distinction is that the project should **never make anti-cheat evasion a design requirement**. Do not optimize the agent to hide autonomous behavior, bypass detection, or gain an unfair advantage in public matchmaking. Human-like behavior can still be studied as an ML research topic, and real human games can still be useful as observational/training data where collection and use are permitted.
+## 5. Core contracts
 
-This boundary is also excellent engineering practice. Controlled environments let you reset scenarios, freeze variables, generate repeatable tests, collect precise state information, and compare checkpoints fairly. Online-style testing can then be treated as a later validation layer rather than the foundation of training.
+### Environment contract
 
-Valve currently provides Source 2 tools for community map makers and artists, and its official resources include Counter-Strike Workshop tooling. Valveâ€™s current CS2 materials also continue to expose game/map scripting updates, making controlled workshop/practice-oriented environments a natural place to experiment. îˆ€citeîˆ‚turn748072search1îˆ‚turn748072search2îˆ‚turn748072search0îˆ
-
-Valveâ€™s developer documentation also describes practice/LAN-oriented commands and demo playback capabilities that can be useful when designing isolated evaluation and observation workflows. îˆ€citeîˆ‚turn748072search9îˆ
-
-**Project rule:** build and train in a controlled environment; treat online-oriented testing as an optional, carefully bounded validation tier, and keep a manual/human-in-the-loop path available at all times.
-
----
-
-# 3. The architecture to aim for
-
-Keep the system modular from the beginning.
-
-```text
-                         â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                         â”‚    Control GUI       â”‚
-                         â”‚  start / stop /     â”‚
-                         â”‚  checkpoints / clips â”‚
-                         â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                                    â”‚
-                         â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                         â”‚   Experiment Manager â”‚
-                         â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                                    â”‚
-        â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-        â”‚                           â”‚                            â”‚
-        â–¼                           â–¼                            â–¼
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”          â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”          â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚ Observation   â”‚          â”‚ Agent / Policy  â”‚          â”‚ Reward / Events â”‚
-â”‚ Adapter        â”‚â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¶â”‚ PyTorch         â”‚â—€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚ Adapter         â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜          â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜          â””â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-        â”‚                            â”‚                           â”‚
-        â–¼                            â–¼                           â–¼
-   screen / state                 action                    reward
-        â”‚                            â”‚                           â”‚
-        â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                                     â–¼
-                              â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                              â”‚ Replay /      â”‚
-                              â”‚ Rollout Store â”‚
-                              â””â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜
-                                      â–¼
-                              â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                              â”‚ Trainer        â”‚
-                              â”‚ PPO / future  â”‚
-                              â”‚ algorithms    â”‚
-                              â””â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜
-                                      â–¼
-                               checkpoint.pt
-```
-
-The single most important architectural decision is this:
-
-> **The neural network should not know what CS2 is.**
-
-It should know how to consume an observation and output an action.
-
-The CS2-specific details should live in adapters.
-
-For example:
-
-```text
-Agent
- â”œâ”€â”€ ObservationAdapter
- â”œâ”€â”€ ActionAdapter
- â”œâ”€â”€ RewardAdapter
- â””â”€â”€ EnvironmentAdapter
-```
-
-That means later you can swap:
-
-```text
-CS2
-â†“
-2D smoke test
-â†“
-custom FPS sandbox
-â†“
-another controlled environment
-```
-
-without rewriting the brain.
-
----
-
-# 4. Recommended tech stack
-
-## Core
-
-- Python
-- PyTorch
-- Gymnasium-style environment API
-- PPO initially
-- OpenCV for image processing where useful
-- NumPy
-- Git + GitHub
-
-## RL
-
-Start with an established PPO implementation so you can focus on the environment and experiments.
-
-Later, once the system works:
-
-> implement PPO yourself in PyTorch.
-
-That gives the project a nice learning progression:
-
-1. Use PPO.
-2. Understand PPO.
-3. Implement PPO.
-4. Compare your implementation with the established implementation.
-
-## Experiment tracking
-
-Use one of:
-
-- TensorBoard for a lightweight local setup.
-- Weights & Biases for richer experiment management and visual comparison.
-
-The specific tool matters less than the discipline:
-
-> **Every experiment should automatically log configuration, metrics, checkpoint names, and results.**
-
-## GUI
-
-Pick a Python GUI technology that you are comfortable maintaining. Good candidates include:
-
-- PySide6/Qt for a polished desktop application.
-- Tkinter if you want minimal dependencies.
-
-For this project, **PySide6 is the most attractive long-term choice** because you want a clean dashboard with live charts, tabs, controls, logs, video previews, checkpoint browsing, and experiment comparison.
-
-## CLI
-
-Use a single command-line entry point, for example:
-
-```bash
-python -m lynxai
-```
-
-or, once the package is installed:
-
-```bash
-lynxai
-```
-
-The CLI should be clean and useful, not a wall of debug output.
-
----
-
-# 5. Project folder structure
-
-Use one project root and never scatter outputs across random directories.
-
-Recommended:
-
-```text
-cs2-ai/
-â”‚
-â”œâ”€â”€ README.md
-â”œâ”€â”€ pyproject.toml
-â”œâ”€â”€ uv.lock                    # if using uv
-â”œâ”€â”€ .gitignore
-â”œâ”€â”€ LICENSE
-â”œâ”€â”€ docs/
-â”‚   â”œâ”€â”€ project_bible.md
-â”‚   â”œâ”€â”€ architecture.md
-â”‚   â”œâ”€â”€ experiments.md
-â”‚   â””â”€â”€ safety.md
-â”‚
-â”œâ”€â”€ src/
-â”‚   â””â”€â”€ lynxai/
-â”‚       â”œâ”€â”€ __init__.py
-â”‚       â”œâ”€â”€ __main__.py
-â”‚       â”‚
-â”‚       â”œâ”€â”€ app/
-â”‚       â”‚   â”œâ”€â”€ cli.py
-â”‚       â”‚   â”œâ”€â”€ gui.py
-â”‚       â”‚   â””â”€â”€ commands.py
-â”‚       â”‚
-â”‚       â”œâ”€â”€ agents/
-â”‚       â”‚   â”œâ”€â”€ base.py
-â”‚       â”‚   â”œâ”€â”€ policy.py
-â”‚       â”‚   â”œâ”€â”€ vision_encoder.py
-â”‚       â”‚   â”œâ”€â”€ memory.py
-â”‚       â”‚   â””â”€â”€ prediction.py
-â”‚       â”‚
-â”‚       â”œâ”€â”€ environments/
-â”‚       â”‚   â”œâ”€â”€ base.py
-â”‚       â”‚   â”œâ”€â”€ smoke2d.py
-â”‚       â”‚   â””â”€â”€ cs2_controlled.py
-â”‚       â”‚
-â”‚       â”œâ”€â”€ adapters/
-â”‚       â”‚   â”œâ”€â”€ observation.py
-â”‚       â”‚   â”œâ”€â”€ action.py
-â”‚       â”‚   â”œâ”€â”€ reward.py
-â”‚       â”‚   â””â”€â”€ events.py
-â”‚       â”‚
-â”‚       â”œâ”€â”€ training/
-â”‚       â”‚   â”œâ”€â”€ trainer.py
-â”‚       â”‚   â”œâ”€â”€ rollout.py
-â”‚       â”‚   â”œâ”€â”€ evaluation.py
-â”‚       â”‚   â”œâ”€â”€ curriculum.py
-â”‚       â”‚   â””â”€â”€ self_play.py
-â”‚       â”‚
-â”‚       â”œâ”€â”€ recording/
-â”‚       â”‚   â”œâ”€â”€ recorder.py
-â”‚       â”‚   â”œâ”€â”€ highlight_detector.py
-â”‚       â”‚   â””â”€â”€ clipper.py
-â”‚       â”‚
-â”‚       â”œâ”€â”€ checkpoints/
-â”‚       â”‚   â”œâ”€â”€ manager.py
-â”‚       â”‚   â””â”€â”€ manifest.py
-â”‚       â”‚
-â”‚       â”œâ”€â”€ data/
-â”‚       â”‚   â”œâ”€â”€ demonstrations.py
-â”‚       â”‚   â”œâ”€â”€ datasets.py
-â”‚       â”‚   â””â”€â”€ schemas.py
-â”‚       â”‚
-â”‚       â”œâ”€â”€ metrics/
-â”‚       â”‚   â”œâ”€â”€ logger.py
-â”‚       â”‚   â”œâ”€â”€ statistics.py
-â”‚       â”‚   â””â”€â”€ reports.py
-â”‚       â”‚
-â”‚       â””â”€â”€ utils/
-â”‚           â”œâ”€â”€ config.py
-â”‚           â”œâ”€â”€ paths.py
-â”‚           â””â”€â”€ time.py
-â”‚
-â”œâ”€â”€ configs/
-â”‚   â”œâ”€â”€ smoke_test.yaml
-â”‚   â”œâ”€â”€ baseline.yaml
-â”‚   â”œâ”€â”€ imitation.yaml
-â”‚   â”œâ”€â”€ rl.yaml
-â”‚   â””â”€â”€ prediction.yaml
-â”‚
-â”œâ”€â”€ data/
-â”‚   â”œâ”€â”€ raw/
-â”‚   â”œâ”€â”€ demonstrations/
-â”‚   â”œâ”€â”€ processed/
-â”‚   â””â”€â”€ scenarios/
-â”‚
-â”œâ”€â”€ runs/
-â”‚   â”œâ”€â”€ active/
-â”‚   â””â”€â”€ archive/
-â”‚
-â”œâ”€â”€ checkpoints/
-â”‚   â”œâ”€â”€ best/
-â”‚   â””â”€â”€ archive/
-â”‚
-â”œâ”€â”€ clips/
-â”‚   â”œâ”€â”€ highlights/
-â”‚   â””â”€â”€ manual/
-â”‚
-â”œâ”€â”€ logs/
-â”‚
-â”œâ”€â”€ reports/
-â”‚
-â””â”€â”€ tests/
-    â”œâ”€â”€ test_agent.py
-    â”œâ”€â”€ test_environment.py
-    â”œâ”€â”€ test_reward.py
-    â”œâ”€â”€ test_checkpoint.py
-    â””â”€â”€ test_paths.py
-```
-
-## Why this layout is good
-
-`src/` = code.
-
-`configs/` = experiment definitions.
-
-`data/` = datasets and raw observations.
-
-`runs/` = each training/evaluation run.
-
-`checkpoints/` = model snapshots.
-
-`clips/` = automatically generated videos.
-
-`reports/` = charts and summaries.
-
-`tests/` = protection against accidental breakage.
-
-The project becomes much easier to reason about when code, data, experiments, and generated media never get mixed together.
-
----
-
-# 6. Make the project path configurable
-
-Do not hard-code things like:
-
-```text
-C:\Users\you\Desktop\...
-```
-
-Instead, have one project-path/config system.
-
-For example:
-
-```text
-PROJECT_ROOT
-DATA_DIR
-RUNS_DIR
-CHECKPOINT_DIR
-CLIPS_DIR
-LOG_DIR
-REPORT_DIR
-```
-
-Everything should be derived from the root.
-
-Example conceptual API:
+Use a `gymnasium.Env` implementation or a thin adapter with the following public behavior:
 
 ```python
-paths.runs.run(run_id)
-paths.checkpoints.run(run_id)
-paths.clips.run(run_id)
+obs, info = env.reset(seed=seed, options={"scenario_id": scenario_id})
+obs, reward, terminated, truncated, info = env.step(action)
+env.close()
 ```
 
-That prevents path bugs when you move the project to another machine.
+- `observation_space` and `action_space` describe exact shapes, dtypes, bounds, and semantics.
+- `reset` returns only after a valid initial state and observation are available.
+- `terminated` identifies a task terminal state, such as success or death.
+- `truncated` identifies an external episode cutoff, such as a time limit. Whether a deadline is intrinsic to a task must be defined in that task's specification.
+- The trainer must preserve terminal observations and use the selected framework's correct time-limit bootstrapping behavior. Do not collapse both flags into a single training `done` signal.
+- Capture failures, broken resets, and lost synchronization are infrastructure errors. Release inputs and invalidate affected data; do not disguise an invalid observation as a normal timeout transition.
+- `close`, stop, and failure handling release held inputs and recording resources. Repeated cleanup should be safe.
 
----
+Use the environment checker supplied by the chosen training library, plus behavioral tests. Verify the library's vector-environment wrapper semantics separately; its interface may differ from raw Gymnasium.
 
-# 7. The 2D game: use it only as a smoke test
+### Transition and event records
 
-You explicitly do **not** want to spend significant time here.
+Each collected transition needs enough context to debug causality:
 
-That is the correct decision.
+| Field | Meaning |
+|---|---|
+| Identity | Run, episode, scenario version, step index, policy version |
+| Observation | Frame/state reference, capture timestamp, preprocessing version |
+| Action | Requested action, applied action, dispatch time, duration, any clipping |
+| Outcome | Next observation, reward components, terminal/truncation reason |
+| Timing | Observation age, step duration, dropped-frame count, event alignment status |
 
-Use AI assistance to make a tiny 2D game whose entire purpose is to validate that:
+Use monotonic timestamps for ordering and duration within a process/host, and UTC timestamps for artifact provenance. If multiple hosts are later introduced, define clock alignment and uncertainty explicitly.
 
-```text
-observation
-â†’ model
-â†’ action
-â†’ environment
-â†’ reward
-â†’ training update
-```
+Events carry an episode identity, type, source, timestamp, and deduplication identity where available. Reward logic must handle duplicated or delayed messages and counter resets. Do not count one kill or damage event on multiple steps.
 
-actually works.
+### Information boundaries
 
-The game can be extremely simple:
+Separate three kinds of information:
 
-```text
-player â†’ platforms â†’ target
-```
+1. **Policy inputs:** observations the agent is allowed to use at decision time.
+2. **Training signals:** rewards or auxiliary labels that may come from instrumented scenario state.
+3. **Evaluation and debugging data:** ground truth used to score or inspect behavior.
 
-Required abilities:
+A vision-only policy must not accidentally receive enemy coordinates through `info`, reward features, or a training wrapper. Structured-state and hybrid agents are separate experiment conditions with their available information stated explicitly. Do not assume CS2 exposes every desired state field.
 
-- Move left/right.
-- Jump.
-- Avoid falling.
-- Reach a goal.
+### Run lifecycle
 
-That's it.
+Use explicit states: `created`, `initializing`, `collecting`, `updating`, `evaluating`, `paused`, `completed`, `stopped`, and `failed`.
 
-## What the smoke test must prove
+Training/evaluation switches take effect at a safe boundary. Evaluation uses a checkpoint snapshot and fixed preprocessing statistics. Pausing releases inputs; resuming either verifies the current state or begins a new episode. A failed run retains its last valid checkpoint and a machine-readable failure reason.
 
-Before touching the real CS2 environment, demonstrate that:
+## 6. CS2 integration and feasibility
 
-1. The environment exposes observations correctly.
-2. The agent receives actions correctly.
-3. Rewards are computed correctly.
-4. Episodes reset correctly.
-5. The trainer updates the model.
-6. Checkpoints save and load.
-7. Evaluation mode freezes the model.
-8. The GUI can start/stop training.
-9. Metrics are logged.
-10. The CLI can launch a run.
+The largest early uncertainty is whether the chosen game host can reliably provide **capture, input, outcomes, and resets**. Prove all four before committing to a large training run.
 
-Do **not** spend weeks polishing the 2D game.
+### Integration investigation
 
-Once these ten things work, move to the actual CS2 experiment.
+Evaluate supported practice/workshop/server tooling, game-state feeds where available, and host capture/input facilities. Treat documentation as a starting point: record the exact CS2 build, host, and successful probe for each capability.
 
----
+| Capability | Required proof |
+|---|---|
+| Frame capture | Correct game window, known resolution and color format, fresh frames during play |
+| Input | Reproducible bounded camera movement, fire press/release, and later movement combinations |
+| Scenario setup | Target/player placement and task conditions can be established and verified |
+| Outcome detection | Success, death when relevant, timeout, and reset events can be distinguished |
+| Reset | Repeatedly returns to the specified starting conditions without manual correction |
+| Timing | Measured frame age, control interval, event delay, and reset duration |
+| Cleanup | Stop, window loss, exception, and worker failure leave controls released |
 
-# 8. First CS2 milestone: build the control loop, not the AI
+A game-state feed is not automatically a control or reset API. Demo playback is not automatically an action-labeled dataset. A custom map is not automatically a deterministic simulator. Record these capabilities separately.
 
-Your first real milestone is not:
+Create an integration note under `docs/` with the chosen mechanisms, reproducible setup steps, observed limitations, fallback options, and a capability matrix. Do not make an undocumented memory reader or invasive game modification a hidden prerequisite.
 
-> â€œAI plays CS2.â€
+### Minimal live probe
 
-It is:
+1. Open one controlled scenario and capture a labeled sample frame.
+2. Apply a bounded aim action; measure the resulting camera displacement.
+3. Press and release fire; verify the input and its observable effect.
+4. Trigger one known outcome and confirm it is recorded once.
+5. Reset and verify player state, target state, and observation freshness.
+6. Repeat the cycle and inject failures such as focus loss and interrupted capture.
 
-> **â€œMy environment adapter can reliably observe, act, reset, and report outcomes in a controlled CS2 test scenario.â€**
+Manual resets are acceptable while exploring integration, but they do not satisfy the automated-training gate. If reliable reset or outcomes are unavailable, continue reusable ML work in Smoke2D and record CS2 training as blocked. A substitute sandbox may answer an infrastructure question but does not count as CS2 validation.
 
-Think of it as a game-environment API.
+### Real-time stepping
 
-Conceptually:
+Smoke2D advances when `step` is called. CS2 may continue running while Python captures a frame, computes an action, or updates a model. The adapter must expose that difference.
 
-```python
-observation = env.reset()
+For each control interval, obtain a fresh observation, compute and apply the action, maintain its defined duration, then align the next observation and intervening outcomes. Log actual duration and frame age. Do not silently reuse stale frames or accumulate an unbounded action queue.
 
-while not done:
-    action = agent.act(observation)
-    observation, reward, done, info = env.step(action)
-```
+Begin with synchronous PPO collection and updates. If the game cannot be paused during optimization, release inputs, leave the unrecorded interval out of the rollout, and establish a verified new episode before collecting again. Plan collection/update boundaries so live episodes do not silently continue through optimizer delays. Keep valid rollout cutoffs distinct from task termination.
 
-This abstraction is enormously important.
+If collection deliberately ends an unfinished episode before an update, expose that cutoff as a truncation with a valid final observation and correct bootstrapping. Reset the collector's observation/history and episode bookkeeping before the next rollout. Do not reset the game behind the trainer's back. Record these operational cutoffs separately from task timeouts in evaluation and metrics.
 
-Your agent should never care whether `env.step()` is backed by:
+Asynchronous actors and learners require policy-version tracking and an algorithm-compatible treatment of stale data; they are later work.
 
-- the 2D smoke test,
-- a controlled CS2 scenario,
-- or a future custom environment.
+## 7. First tasks, observations, actions, and rewards
 
----
+### Task progression
 
-# 9. First real agent: ridiculously small
+Each task has its own scenario version, observation/action definitions, reward specification, episode endings, and evaluation suite.
 
-Do not start with grenades.
+| Task | Agent controls | Primary outcome | Purpose |
+|---|---|---|---|
+| Smoke2D | Left, right, jump, no-op | Goal reached before fall or timeout | Verify the ML pipeline |
+| CS2 target acquisition | Camera yaw/pitch and fire; player position fixed | Target eliminated within the episode limit | Establish visual aiming and firing |
+| CS2 moving target | Same actions; controlled target motion | Success rate by speed/direction | Test tracking and temporal information |
+| CS2 simple duel | Aim, fire, and bounded movement; one opponent | Duel win rate | Introduce movement, damage, and death |
+| CS2 scenario family | Wider spawn/cover/distance variation | Held-out scenario performance | Test generalization |
 
-Do not start with the bomb.
+Do not add all mechanics at once. Every task should be solvable by a human and at least one simple reference controller before training begins. A controller using privileged state is useful for diagnosing the environment, but must be labeled as such in comparisons.
 
-Do not start with prediction.
+### Initial visual observation
 
-Do not start with a giant model.
+Start with a single grayscale gameplay frame resized to **160 × 90**, preserving its aspect ratio. Inspect target visibility at all planned distances before accepting this default. Move to color or a larger image only when visibility or an experiment justifies the cost.
 
-Start with:
+Specify and version:
 
-### Observation
+- Capture region, source resolution, resizing method, color conversion, and HUD inclusion.
+- Tensor shape and layout; initially `(1, 90, 160)` with `uint8` pixels in `[0, 255]` at the environment boundary.
+- Exactly one normalization step in the model/wrapper pipeline.
+- History length and sampling interval when frame stacking is introduced.
+- Reset behavior for frame history and handling of stale or missing frames.
 
-A low-resolution frame, potentially downsampled aggressively.
+The CNN must accept the declared dimensions; verify the complete wrapper-to-policy path with a real batch. Save sample processed frames with each configuration so an incorrect crop or normalization is visible.
 
-For example, something in the rough neighborhood of:
+Use a single frame for the first stationary task. Compare it with four-frame history when motion becomes relevant. Recurrent state comes later and must be reset at episode boundaries.
 
-```text
-160 Ã— 90
-```
+### Initial action space
 
-is worth investigating as an initial experiment.
+For target acquisition, use a factorized discrete action space such as `MultiDiscrete([3, 3, 2])`:
 
-The exact resolution should be treated as a parameter, not a permanent decision.
+| Factor | Values |
+|---|---|
+| Yaw increment | Left, zero, right |
+| Pitch increment | Down, zero, up |
+| Fire state | Released, held |
 
-### Actions
+This allows aiming and firing together. A single categorical choice among `W`, `A`, `S`, `D`, and fire would prevent simultaneous actions and would not provide general aiming.
 
-```text
-W
-A
-S
-D
-LMB
-```
+The input adapter maps increments to calibrated mouse displacement on the chosen host. Record sensitivity, relevant acceleration settings, camera configuration, maximum displacement, and control interval. The exact increment sizes are selected by the feasibility probe, then fixed for the baseline.
 
-Then optionally:
+Start with a nominal **10 decisions per second** if capture and input can sustain it. This is a measured operating choice, not a required game frame rate. Fire is a held button state for the interval; a neutral action releases it. Bound camera movement and implement release-all independently of policy inference.
 
-```text
-RMB
-```
+For movement tasks, add strafe and forward/back factors with neutral values. Keep impossible opposing directions out of the mapping. Add jumping, reload, weapon changes, secondary fire, and objective interactions only when the scenario requires them. Continuous aim is a later comparison with its own policy distribution and checkpoint compatibility rules.
 
-The initial action space should stay tiny.
+### Reward design
 
----
+Use task outcomes as the initial reward and log each component separately:
 
-# 10. Why the first model does not need to be huge
+| Task | Initial reward |
+|---|---|
+| Smoke2D | Preserve the existing goal/fall/time-limit behavior for the first baseline; document any semantic change during Gymnasium migration |
+| Target acquisition | `+1` for verified target elimination; `0` otherwise |
+| Simple duel | `+1` for elimination, `-1` for death; declare simultaneous-outcome handling |
 
-A common misconception is:
+Use a fixed episode cap so doing nothing does not create an unlimited episode. A valid time-limit cutoff still counts as failure for the success-rate metric, even when the learning algorithm bootstraps its value estimate.
 
-> â€œTo understand a 3D FPS, I need an enormous AI model.â€
+Sparse reward may make exploration slow. First verify that scripted/human actions can earn it. Then compare one change at a time: demonstration initialization, easier target placement, or a bounded shaping term such as verified incremental damage. Keep the sparse baseline for reference.
 
-Not necessarily.
+Avoid unconditional survival rewards initially: they can reward inactivity. Avoid repeated rewards from cumulative event counters. Distance-to-target or aim-error shaping requires a trustworthy signal and belongs to a separately labeled experiment. Potential-based shaping is an option when its state, terminal handling, and discount assumptions are satisfied.
 
-You can build a specialized model whose task is much narrower than general visual intelligence.
+**Reward is an optimization signal, not the final score.** Report success, time to success, accuracy where measurable, and deaths independently of shaped return. Changing reward weights must not silently change the meaning of the evaluation suite.
 
-The conceptual pipeline is:
+## 8. Learning strategy
 
-```text
-low-res frame
-      â†“
-small CNN
-      â†“
-visual feature vector
-      â†“
-policy/value network
-      â†“
-action probabilities
-```
+### Establish PPO on the smoke task
 
-Example:
+**Proximal Policy Optimization (PPO)** alternates between collecting a batch of interactions and making bounded updates to the policy. Its value model estimates future return to help the policy learn. A **rollout** is the collected sequence used for an update; PPO is **on-policy**, meaning it relies on data collected with the relevant current policy rather than an unrestricted archive of past experience.
 
-```text
-W       0.09
-A       0.04
-S       0.02
-D       0.58
-LMB     0.24
-RMB     0.03
-```
+Use the existing Stable-Baselines3 extra and a small MLP policy. Keep the library's rollout buffer and optimizer behavior intact initially. Record hyperparameters explicitly instead of relying on defaults that can change across versions.
 
-The model does not need to describe the image in English.
+A useful first baseline is the library's standard PPO configuration with only the environment, policy, seed, budget, and logging path selected. Verify rollout size, batch-size compatibility, observation scaling, and CPU performance before tuning.
 
-It only needs to learn a representation useful for action selection.
+Inspect episode outcomes, value estimates, policy entropy, approximate KL divergence, clipping fraction, and update counts. A completed run is not proof of learning: compare frozen evaluation against random and scripted policies.
 
-The hard problems are likely to be:
+### Visual PPO baseline
 
-- learning useful behavior,
-- gathering enough experience,
-- reward design,
-- temporal reasoning,
-- and stable training.
+After CS2 integration passes its gate, use a small CNN actor-critic compatible with the chosen action space. Record parameter count, inference latency, optimizer settings, discount factor, rollout length, batch size, update epochs, and entropy/value coefficients.
 
----
+Use PPO on newly collected experience from the current policy. Archived rollouts and arbitrary human demonstrations are not interchangeable with on-policy PPO data. Keep demonstrations in a separate behavioral-cloning stage unless an explicit, tested algorithm introduces them differently.
 
-# 11. Screen processing and latency
+Start with a short, budgeted PPO-from-scratch pilot. If it rarely receives reward, diagnose the environment and exploration before increasing the model or running overnight. The first major comparison should include demonstration initialization early enough to avoid spending the entire project on random exploration.
 
-Latency matters more for this project than raw parameter count.
+### Demonstrations and behavioral cloning
 
-The loop is roughly:
+Record the human's observation and the actual input applied during the following action interval. A useful dataset includes:
 
-```text
-capture
-  â†“
-preprocess
-  â†“
-model inference
-  â†“
-action decision
-  â†“
-environment input
-```
+- Session, episode, task, scenario, and source identities.
+- Frames or frame references, capture timestamps, and input timestamps.
+- Button states, mouse displacement, mapped policy actions, and interval duration.
+- Capture/input calibration, game build, preprocessing version, and action schema.
+- Outcome events, intervention markers, data-quality flags, and collection permissions/provenance.
 
-Keep the system measurable.
+Inspect alignment visually before scaling collection. Quantizing human mouse motion into the initial action bins loses information; measure clipping and quantization error and keep the raw inputs. Match the collection task and control rate to the policy being trained.
 
-Log timings such as:
+Split by complete sessions and scenario groups, not adjacent frames. Keep validation and final-test sessions out of training. Log action imbalance and evaluate each action factor; high no-op accuracy is not enough.
 
-```text
-capture_ms
-preprocess_ms
-inference_ms
-action_ms
-total_loop_ms
-```
+Train by maximizing the probability of demonstrated actions. For factorized discrete actions, use the appropriate categorical losses for each factor and record any weighting. Evaluate the resulting policy in the environment because supervised accuracy alone cannot measure recovery from its own mistakes.
 
-Do not guess where the bottleneck is.
+Initialize PPO with the compatible cloned policy. Define which encoder and policy parameters transfer, how the value head is initialized, and whether optimizer state is reset. Record the parent checkpoint. Compare BC alone with BC plus PPO to check whether RL improves or degrades behavior.
 
-Measure it.
+### Spectator and replay data
 
-## Important idea: action frequency is an experiment
+Keep spectator/replay observations in a separate dataset class. Without reliable aligned actions, they cannot be treated as ordinary behavioral-cloning examples. They may support representation learning, event annotation, or opponent prediction with suitable labels.
 
-The agent does not necessarily have to make a new decision every possible rendered frame.
+If actions are inferred, record that they are inferred and measure their quality. Never merge them silently with directly recorded human controls. Spectating after death ends the active agent episode; it is a separate collection mode.
 
-Test different control rates and measure:
+### What to postpone
 
-- reward,
-- stability,
-- aim performance,
-- computational cost.
+Implementing PPO from scratch is a later educational experiment against the established baseline. New algorithms, recurrent policies, large models, and auxiliary losses should each answer a diagnosed limitation. Preserve a simple reference agent throughout development.
 
-For example, compare:
+## 9. Evaluation and research method
 
-```text
-10 decisions/sec
-20 decisions/sec
-30 decisions/sec
-60 decisions/sec
-```
+Evaluation is part of the first training milestone, not a final polish stage.
 
-These are experiment values, not requirements.
+### Dataset and scenario splits
 
-The interesting question is:
+Maintain versioned manifests for:
 
-> **What decision frequency gives the best performance per unit of compute?**
+| Split | Use |
+|---|---|
+| Training | Gradient updates, exploration, demonstration training, curriculum sampling |
+| Validation | Hyperparameters, checkpoint selection, and development diagnostics |
+| Final test | A frozen comparison after choices and budgets are fixed |
 
----
+Separate meaningful scenario factors where possible: target positions, movement patterns, map regions, recording sessions, and later opponent styles. Random frame splits do not establish generalization. If final-test results guide another design change, treat that suite as development data and create a new untouched test split for the next claim.
 
-# 12. One computer or two?
+### Baselines and fair comparisons
 
-Start with one.
+Keep at least a no-op policy, random valid actions, and a simple scripted controller. Label the information each controller uses. Add BC, PPO, and BC+PPO under identical task definitions.
 
-A second computer should be an optimization, not a prerequisite.
+For the first substantive study:
 
-Potential architecture later:
+- Use at least three independent training seeds; treat this as an initial evidence floor, not a guarantee of statistical power.
+- Start with 100 evaluation episodes per policy per training seed, balanced across the declared scenario groups. Increase this when uncertainty remains too large for the decision.
+- Use the same scenario list for each condition, randomize/interleave execution order when practical, and record environmental drift.
+- Fix the evaluation action rule: deterministic selection or a declared stochastic sampling procedure. Disable optimizer updates and freeze normalization statistics.
+- Select checkpoints using validation only. Choose the primary selection metric and tie-break rule before the run.
+- Compare both equal interaction budgets and wall-clock/data costs. BC+PPO includes demonstration collection and pretraining; it is not a free warm start.
 
-```text
-Computer A
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-controlled environment
-screen/state collection
+Report per-seed results and aggregate uncertainty. Resampling or intervals must respect shared training seeds and scenario/session clusters; hundreds of correlated frames are not hundreds of independent experiments. With few training seeds, make the limits of the evidence explicit.
 
-      â”‚
-      â”‚ local network
-      â–¼
+### Metrics
 
-Computer B
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-GPU inference/training
-```
+| Category | Initial measurements |
+|---|---|
+| Task | Success rate, timeout rate, deaths, time to success, accuracy when shot/hit events are reliable |
+| Learning | Return and reward components, environment interactions, updates, entropy, value diagnostics, KL/clipping |
+| Generalization | Performance by held-out position, distance, motion, and scenario family |
+| Efficiency | Valid interactions per second, wall-clock time to a declared score, reset/update time, compute and storage use |
+| Reliability | Invalid episodes, reset failures, stale frames, missed control deadlines, crashes and recovery |
+| Imitation | Per-factor validation loss/accuracy and closed-loop task success |
 
-Benefits:
+Report time to success together with the success rate; a policy that succeeds only on easy cases can have misleadingly fast successful episodes. Define every denominator. If shot counts are unavailable, omit accuracy rather than inventing a proxy with the same name.
 
-- isolates GPU workloads,
-- leaves the game machine more resources,
-- opens the door to multiple training workers.
+Infrastructure failures are reported separately from valid gameplay failures. Record all attempts and any replacement evaluations; do not silently drop bad episodes to raise the score.
 
-Costs:
+### Experiment record
 
-- network latency,
-- synchronization complexity,
-- more moving pieces,
-- harder debugging.
+Before a substantive run, write a short experiment card:
 
-So the rule is:
+1. Question and hypothesis.
+2. One primary change and the reference condition.
+3. Task, observation, action, reward, and dataset versions.
+4. Interaction, wall-clock, compute, and storage budgets.
+5. Seeds, splits, checkpoint selection rule, and primary metric.
+6. Success criterion, stop conditions, and expected artifacts.
 
-> **Make the single-machine version correct before distributing it.**
+Afterward, add results, uncertainty, representative failures, and the next decision. Report negative outcomes and all planned seeds, including failed runs.
 
----
+### Software validation
 
-# 13. Reward design: start simple, then improve
+Keep fast tests independent of CS2 and separate them from host integration tests:
 
-Your proposed first reward function is excellent for a first experiment:
+- Unit tests: reward event accounting, config validation, action mapping, preprocessing, and terminal semantics.
+- Contract tests: spaces, reset determinism where supported, valid actions, wrapper behavior, and cleanup.
+- Training smoke test: a short run performs real updates and produces loadable artifacts. Statistical learning thresholds belong in a longer, controlled test rather than a fragile unit test.
+- Checkpoint tests: loading preserves predictions and declared state; incompatible schemas fail clearly.
+- Evaluation tests: policy parameters and normalization statistics remain unchanged.
+- CS2 host tests: live capture, input release, verified resets, event alignment, and failure recovery.
 
-```text
-kill   +10
- death -10
-```
+CI should install the package, run fast tests, and build the distribution. Exercise an installed wheel outside the checkout to catch missing modules/resources. Mark CS2 tests as requiring the game host; a skipped live test is not a pass.
 
-Use a small number of reward signals initially so you know what caused learning to change.
+## 10. Configuration, data, and checkpoints
 
-## The reward-hacking problem
+### Configuration rules
 
-The agent might discover an unintended strategy.
+Use versioned YAML schemas with explicit validation. Reject unknown fields, invalid ranges, incompatible spaces, and conflicting settings before starting the game or training.
 
-For example:
+Resolution order should be documented: defaults, experiment YAML, then explicit CLI overrides. Write the fully resolved configuration into the run directory and compute its hash. Record non-secret host settings separately. Credentials and machine-specific secrets do not belong in experiment artifacts.
 
-> repeatedly perform some useless action that accidentally correlates with reward.
-
-That is not necessarily a failure of the project. It is a valuable finding.
-
-Document it.
-
-Then fix the reward function and compare the new run against the old run.
-
-## Later reward terms
-
-Possible additions:
-
-```text
-kill                   +10
-round win              +20
-survival                +small positive signal
-useful damage           +small positive signal
-death                  -10
-round loss              -small negative signal
-objective progress     +small positive signal
-objective completion   +large positive signal
-```
-
-Avoid stuffing every conceivable reward into the system at once.
-
-Add one change at a time.
-
----
-
-# 14. Reward shaping experiments
-
-This should eventually become a major research section of the project.
-
-Compare:
-
-### Experiment A
-
-```text
-reward = kills - deaths
-```
-
-### Experiment B
-
-```text
-reward = kills + survival - deaths
-```
-
-### Experiment C
-
-```text
-reward = kills + damage + survival - deaths
-```
-
-### Experiment D
-
-```text
-reward = kills + objective_progress + round_result + survival - deaths
-```
-
-Then compare learning curves.
-
-The question becomes:
-
-> **How does the reward definition change what the agent actually learns?**
-
-That is an excellent portfolio question.
-
----
-
-# 15. Human demonstrations: the first big upgrade
-
-You had an excellent idea: record yourself playing and use that data.
-
-Each demonstration should conceptually contain:
-
-```text
-frame / frame sequence
-+
-action
-+
-timestamp
-+
-optional game-event metadata
-```
-
-For example:
-
-```text
-frame_001 â†’ W
-frame_002 â†’ W
-frame_003 â†’ W + LMB
-frame_004 â†’ D
-frame_005 â†’ D + LMB
-```
-
-This creates a behavioral dataset.
-
-## Behavioral cloning
-
-Train a model to predict human actions from observations.
-
-That produces an initial policy that is not random.
-
-Then use RL to improve it.
-
-```text
-human demonstrations
-        â†“
-behavioral cloning
-        â†“
-initial policy
-        â†“
-reinforcement learning
-        â†“
-improved policy
-```
-
-This is one of the strongest ideas in the entire project because it addresses a fundamental problem:
-
-> random exploration in a complicated FPS can be extremely inefficient.
-
-Human demonstrations provide a useful starting point.
-
----
-
-# 16. Spectating as additional experience
-
-Another idea from the project discussion: when the agent is dead and can spectate a player or another permitted training agent in the controlled environment, treat that as a separate kind of data.
-
-Conceptually:
-
-```text
-agent dies
-   â†“
-spectator / demonstration phase
-   â†“
-observe another player/agent
-   â†“
-collect frames + actions where available
-   â†“
-add to demonstration dataset
-```
-
-The key is to distinguish the sources.
-
-Tag data as:
-
-```text
-source = human_self
-source = human_other
-source = scripted_agent
-source = learned_agent
-```
-
-Then you can measure whether mixing sources helps.
-
-Potential research comparison:
-
-```text
-RL only
-vs.
-Human imitation + RL
-vs.
-Human + spectator demonstrations + RL
-```
-
-That is a genuinely interesting study.
-
----
-
-# 17. Human-like behavior: do it as measurement, not anti-cheat evasion
-
-A later project goal can be:
-
-> **â€œCan the learned agent produce movement statistics similar to humans?â€**
-
-Collect human behavior statistics such as:
-
-- reaction times,
-- mouse velocity,
-- mouse acceleration,
-- correction frequency,
-- pause durations,
-- movement-direction changes,
-- action burst lengths,
-- time between shots.
-
-Then compare distributions:
-
-```text
-human distribution
-vs.
-AI distribution
-```
-
-You can define a research objective around reducing the statistical difference between the two.
-
-That is a legitimate behavioral-modeling question.
-
-Do not turn human-like behavior into an anti-cheat-evasion objective. The interesting research question is whether the learned policy reproduces human behavioral statistics, not whether it can disguise autonomous play.
-
----
-
-# 18. Automatic highlights / clips
-
-This should be built surprisingly early because it makes training more fun and makes failures easier to investigate.
-
-## Rolling buffer
-
-Continuously retain a short rolling video buffer.
-
-When an event occurs, save:
-
-```text
-N seconds before event
-+
-event
-+
-N seconds after event
-```
-
-Possible triggers:
-
-- kill,
-- multi-kill,
-- round win,
-- unusual reward spike,
-- prediction success,
-- new personal record,
-- objective completion,
-- unusually long survival,
-- surprising behavior.
-
-## Pair every clip with metadata
-
-For each highlight save something like:
-
-```json
-{
-  "run_id": "2026-09-01_001",
-  "checkpoint": 47,
-  "episode": 18241,
-  "event": "kill",
-  "reward": 10.0,
-  "prediction_confidence": 0.72,
-  "model_version": "agent_0047"
-}
-```
-
-This allows the GUI to say:
-
-> â€œCheckpoint 47 â€” prediction success â€” watch clip.â€
-
-That is fantastic for debugging and presentation.
-
----
-
-# 19. Checkpoints: save everything important
-
-Do not only save:
-
-```text
-model.pt
-```
-
-A serious checkpoint should preserve enough information to reproduce the experiment state.
-
-Recommended conceptual structure:
-
-```text
-checkpoint_0047/
-â”œâ”€â”€ model.pt
-â”œâ”€â”€ optimizer.pt
-â”œâ”€â”€ scheduler.pt
-â”œâ”€â”€ config.yaml
-â”œâ”€â”€ training_state.json
-â”œâ”€â”€ metrics.json
-â”œâ”€â”€ rng_state.bin
-â”œâ”€â”€ environment_info.json
-â””â”€â”€ manifest.json
-```
-
-The exact files can change by framework, but the idea stays the same.
-
-## Checkpoint metadata should include
-
-- model architecture,
-- model version,
-- observation size,
-- action-space definition,
-- reward definition,
-- environment version,
-- code version/commit hash,
-- training step,
-- episode count,
-- cumulative reward,
-- evaluation metrics,
-- timestamp.
-
-## Always have
-
-### Best checkpoint
-
-The best performing model by a chosen evaluation metric.
-
-### Latest checkpoint
-
-Most recent model.
-
-### Archived checkpoints
-
-Older snapshots preserved for comparison.
-
----
-
-# 20. â€œTime travelâ€ checkpoint comparison
-
-This was one of the best ideas from the discussion.
-
-Build a way to run the **same scenario** with multiple checkpoints.
-
-For example:
-
-```text
-Scenario: enemy appears at doorway
-
-Checkpoint 01 â†’ misses / does not react
-Checkpoint 10 â†’ notices enemy
-Checkpoint 20 â†’ moves toward enemy
-Checkpoint 30 â†’ aims
-Checkpoint 40 â†’ shoots
-Checkpoint 50 â†’ anticipates peek
-```
-
-Now your project can literally show:
-
-> **â€œThis is what the same agent looked like at different stages of training.â€**
-
-That is far more convincing than a single final score.
-
----
-
-# 21. Evaluation must be separate from training
-
-Create two explicit modes.
-
-## Training mode
-
-```text
-play
-â†’ collect experience
-â†’ update weights
-â†’ save checkpoint
-```
-
-## Evaluation mode
-
-```text
-play
-â†’ collect metrics
-â†’ DO NOT update weights
-```
-
-This distinction is crucial.
-
-Otherwise you cannot tell whether a model improved because:
-
-- it was already good,
-- it happened to get an easy scenario,
-- or it actually learned.
-
-## Useful automation
-
-Support a workflow like:
-
-```text
-Train for N episodes
-        â†“
-freeze model
-        â†“
-run evaluation suite
-        â†“
-log metrics
-        â†“
-save checkpoint
-        â†“
-select best/latest
-```
-
----
-
-# 22. Overnight training
-
-Once the pipeline is reliable, automated long-running training becomes one of the project's biggest strengths.
-
-Example workflow:
-
-```text
-22:00
-start experiment
-
-â†“
-
-collect episodes
-collect metrics
-save checkpoints
-save clips
-
-â†“
-
-02:00
-run evaluation
-
-â†“
-
-03:00
-train/update model
-
-â†“
-
-06:00
-final evaluation
-
-â†“
-
-08:00
-GUI shows summary
-```
-
-However, never rely on â€œit ran all nightâ€ as proof that training was successful.
-
-Add automatic health checks.
-
-For example:
-
-```text
-If reward has not improved
-for a configured number of episodes:
-
-pause
-save checkpoint
-mark run as stalled
-```
-
-This prevents wasting many hours on a broken experiment.
-
----
-
-# 23. Train while playing: online learning toggle
-
-Eventually add a simple switch:
-
-```text
-[ Training ON ]
-```
-
-or:
-
-```text
-[ Evaluation / Frozen ]
-```
-
-In training mode:
-
-```text
-play â†’ update â†’ continue
-```
-
-In evaluation mode:
-
-```text
-play â†’ log â†’ continue
-```
-
-Also add:
-
-```text
-Train N episodes â†’ Evaluate N episodes â†’ repeat
-```
-
-That creates a clean learning/evaluation cycle.
-
----
-
-# 24. Adaptive curriculum
-
-Once the agent has enough skills, stop giving it only random training.
-
-Measure weaknesses.
-
-Example:
-
-```text
-Aim accuracy            83%
-Movement                91%
-Close-range combat      47%
-Long-range combat       31%
-Grenade usage           12%
-Prediction              55%
-```
-
-Then automatically generate more situations matching the weakest skills.
-
-That gives you:
-
-> **AI that practices what it is bad at.**
-
-This is a natural extension of curriculum learning.
-
----
-
-# 25. Scenario generation
-
-Build a library of controlled situations.
-
-Example:
+The following is a proposed configuration shape, not something the current loader accepts:
 
 ```yaml
-scenario:
-  name: left_peek
-  player_spawn: A
-  enemy_spawn: B
-  behavior: aggressive_peek
-  objective: eliminate_target
-```
-
-Then generate variations.
-
-Possible dimensions:
-
-- enemy location,
-- starting position,
-- distance,
-- direction of movement,
-- cover,
-- timing,
-- number of targets,
-- objective state.
-
-This lets you create thousands of controlled test cases.
-
-It also makes evaluation repeatable.
-
----
-
-# 26. Player prediction
-
-This is a major long-term upgrade and deserves its own subsystem.
-
-Instead of only asking:
-
-> â€œWhat should I do now?â€
-
-ask:
-
-> **â€œWhat will the opponent probably do next?â€**
-
-Example sequence:
-
-```text
-t-3  enemy moves left
-t-2  enemy moves left
-t-1  enemy approaches corner
-t0   enemy reaches corner
-```
-
-Prediction head:
-
-```text
-continue left     72%
-stop              18%
-reverse            10%
-```
-
-Then the policy receives both current perception and predicted behavior.
-
-Conceptually:
-
-```text
-                observation
-                     â†“
-               vision encoder
-                     â†“
-             â”Œâ”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”
-             â†“                â†“
-        behavior head     action head
-             â†“                â†“
-       prediction         decision
-             â””â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                     â†“
-                   action
-```
-
----
-
-# 27. Train prediction separately first
-
-Do not immediately entangle prediction with the main RL policy.
-
-First build a standalone prediction experiment:
-
-```text
-sequence of observations
-        â†“
-predict next movement
-```
-
-Measure:
-
-- next-direction accuracy,
-- next-position error,
-- prediction horizon,
-- calibration of confidence.
-
-Once that works, feed its representation into the decision policy.
-
-This lets you answer:
-
-> â€œDoes prediction actually improve decision-making?â€
-
----
-
-# 28. Temporal reasoning and memory
-
-A single frame may not contain enough information.
-
-A player might have just disappeared behind cover.
-
-The agent may need to remember:
-
-> â€œI saw that player move behind that wall two seconds ago.â€
-
-So later introduce temporal models.
-
-Potential approaches:
-
-- frame stacking,
-- GRU/LSTM,
-- temporal convolution,
-- small transformer.
-
-Start with the simplest one.
-
-A useful progression is:
-
-```text
-single frame
-â†’ stacked frames
-â†’ recurrent state
-â†’ transformer-style sequence model
-```
-
-Then compare performance and compute cost.
-
----
-
-# 29. Vision vs structured state
-
-This is another excellent experiment.
-
-### Agent A: image only
-
-```text
-screen â†’ CNN â†’ policy
-```
-
-### Agent B: structured state
-
-```text
-player position
-enemy position
-velocity
-health
-ammo
-objective
-â†’ policy
-```
-
-### Agent C: hybrid
-
-```text
-screen
-+
-structured signals
-â†’ policy
-```
-
-Then compare:
-
-- training speed,
-- final performance,
-- generalization,
-- model size,
-- inference latency.
-
-The question becomes:
-
-> **How much does an explicit world representation help an agent learn?**
-
-This can become a strong section of the research report.
-
----
-
-# 30. Action-space progression
-
-Use a deliberate expansion strategy.
-
-## Version 1
-
-```text
-W A S D
-```
-
-## Version 2
-
-```text
-W A S D + LMB
-```
-
-## Version 3
-
-```text
-W A S D + LMB + RMB
-```
-
-## Version 4
-
-Add controlled aiming/mouse actions.
-
-## Version 5
-
-Add additional mechanics relevant to the controlled scenario.
-
-## Version 6
-
-Add objective actions.
-
-The important idea is:
-
-> **Do not increase the action space until the current action space is understood.**
-
-An expanded action space changes the learning problem dramatically.
-
----
-
-# 31. Advanced objectives
-
-Later, in controlled scenarios, introduce objective-level behavior:
-
-- attack objective,
-- defend objective,
-- plant objective,
-- defuse objective,
-- save resources,
-- coordinate with a teammate.
-
-The agent then progresses from:
-
-```text
-shooting
-```
-
-to:
-
-```text
-gameplay
-```
-
-That is the real long-term goal.
-
----
-
-# 32. Modular skill system
-
-A future architecture can separate skills:
-
-```text
-                 Vision
-                   â†“
-              World model
-                   â†“
-       â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-       â†“           â†“            â†“
-    Combat      Movement    Prediction
-       â”‚           â”‚            â”‚
-       â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                   â†“
-                 Policy
-                   â†“
-                 Action
-```
-
-This may not be needed early.
-
-Treat it as an advanced research direction, not a starting requirement.
-
----
-
-# 33. AI vs AI / self-play
-
-Once the fundamentals work, create controlled agents with different styles.
-
-Example:
-
-```text
-Agent A = aggressive
-Agent B = defensive
-```
-
-Then measure:
-
-- win rate,
-- survival,
-- decision diversity,
-- adaptation.
-
-Eventually you can explore self-play:
-
-```text
-Agent A
-   â†•
-Agent B
-   â†•
-Agent C
-```
-
-This creates a pathway toward studying whether agents develop stronger behavior when trained against changing opponents.
-
-Again: keep this inside a controlled environment.
-
----
-
-# 34. Model uncertainty and action probabilities
-
-Do not only output the selected action.
-
-Log the model's action distribution.
-
-Example:
-
-```text
-W       0.08
-A       0.03
-S       0.01
-D       0.72
-LMB     0.14
-RMB     0.02
-```
-
-This is useful for:
-
-- debugging,
-- visualizing decisions,
-- detecting uncertainty,
-- studying exploration,
-- producing portfolio visuals.
-
-The GUI can show the distribution live.
-
----
-
-# 35. Build a beautiful GUI
-
-The GUI should be one of the project's headline features.
-
-Think of it as a lab control center, not just a settings window.
-
-## Main dashboard
-
-Show:
-
-```text
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚ lynxai lab                                         â”‚
-â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
-â”‚                                                    â”‚
-â”‚  LIVE VIEW                 CURRENT RUN             â”‚
-â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”      Checkpoint: 047         â”‚
-â”‚  â”‚                 â”‚      Episode: 18,241         â”‚
-â”‚  â”‚    GAME VIEW    â”‚      Reward: +137            â”‚
-â”‚  â”‚                 â”‚      Kills: 17               â”‚
-â”‚  â”‚                 â”‚      Deaths: 9               â”‚
-â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜      K/D: 1.89              â”‚
-â”‚                                                    â”‚
-â”‚  ACTION PROBS             TRAINING                â”‚
-â”‚  W   â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆ              [ TRAINING ON ]         â”‚
-â”‚  A   â–ˆâ–ˆ                   [ PAUSE ]              â”‚
-â”‚  S   â–ˆ                    [ STOP ]               â”‚
-â”‚  D   â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆ            [ EVALUATE ]            â”‚
-â”‚  LMB â–ˆâ–ˆâ–ˆâ–ˆ                                          â”‚
-â”‚  RMB â–ˆ                                             â”‚
-â”‚                                                    â”‚
-â”‚  [ CHECKPOINTS ] [ HIGHLIGHTS ] [ EXPERIMENTS ]  â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-```
-
-## Recommended tabs
-
-### Live
-
-- live game view,
-- current action,
-- action probabilities,
-- reward events,
-- current episode.
-
-### Training
-
-- training controls,
-- learning rate,
-- batch/rollout settings,
-- steps,
-- loss curves,
-- reward curves.
-
-### Checkpoints
-
-- list checkpoints,
-- view metadata,
-- restore,
-- compare.
-
-### Highlights
-
-- automatically generated clips,
-- filter by event,
-- open clip,
-- inspect metadata.
-
-### Experiments
-
-- compare runs,
-- compare models,
-- compare reward functions.
-
-### Evaluation
-
-- launch repeatable test suites,
-- compare results.
-
-### Settings
-
-- project paths,
-- capture settings,
-- logging settings,
-- compute settings.
-
----
-
-# 36. CLI design
-
-The CLI should be short and predictable.
-
-Example command set:
-
-```bash
-lynxai doctor
-lynxai smoke-test
-lynxai train --config configs/baseline.yaml
-lynxai evaluate --checkpoint checkpoints/best/...
-lynxai inspect-run RUN_ID
-lynxai compare RUN_A RUN_B
-lynxai list-checkpoints
-lynxai restore CHECKPOINT_ID
-lynxai generate-report RUN_ID
-lynxai clips --run RUN_ID
-```
-
-## `doctor`
-
-This should check:
-
-- Python version,
-- PyTorch availability,
-- GPU visibility,
-- required dependencies,
-- project directories,
-- write permissions,
-- model/config compatibility.
-
-Output should feel professional:
-
-```text
-lynxai doctor
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-Python            OK
-PyTorch           OK
-GPU               OK
-Project paths     OK
-Config files      OK
-Smoke environment OK
-
-Ready.
-```
-
----
-
-# 37. Configuration files
-
-Do not bury experiment settings inside Python code.
-
-Use config files.
-
-Example conceptual config:
-
-```yaml
+schema_version: 1
 experiment:
-  name: baseline_kill_death
-  seed: 42
+  name: cs2_target_ppo
+  seed: 1337
+  artifact_root: ./artifacts
+
+environment:
+  id: cs2_target_v1
+  scenario_manifest: scenarios/target_v1/train.json
+  control_hz: 10
+  max_episode_seconds: 10
 
 observation:
+  schema: grayscale_single_v1
   width: 160
   height: 90
-  grayscale: false
-  frame_stack: 1
+  history_length: 1
 
-actions:
-  - W
-  - A
-  - S
-  - D
-  - LMB
+action:
+  schema: aim_fire_discrete_v1
+  calibration: configs/hosts/local_aim.yaml
 
 reward:
-  kill: 10
-  death: -10
+  schema: target_sparse_v1
+  elimination: 1.0
 
 training:
-  algorithm: ppo
-  total_steps: 1000000
-  learning_rate: 0.0003
+  algorithm: sb3_ppo
+  hyperparameters: configs/algorithms/ppo_v1.yaml
+  budget:
+    environment_steps: 100000
+    wall_clock_hours: 4
 
-logging:
-  save_every_steps: 10000
-  clip_highlights: true
+evaluation:
+  validation_manifest: scenarios/target_v1/validation.json
+  episodes: 100
+  action_selection: deterministic
+  selection_metric: success_rate
 ```
 
-Then an experiment is defined by a config plus a code version.
+Budgets and episode limits above are starting examples to revise after measuring the host. Stop when either budget is exhausted. Store resolved hyperparameters and calibration content or immutable references, not just mutable filenames.
 
----
+### Artifact layout
 
-# 38. Reproducibility
-
-Every run should have:
+Use one configurable artifact root, independent of the source checkout. The current scattered runtime directories can migrate when the artifact manager is introduced.
 
 ```text
-run_id
-code_commit
-config_hash
-random_seed
-model_version
-environment_version
+artifacts/
+  datasets/<dataset_id>/
+    manifest.json
+    sessions/
+    splits/
+  runs/<run_id>/
+    manifest.json
+    config.resolved.yaml
+    metrics.jsonl
+    events.jsonl
+    checkpoints/<checkpoint_id>/
+    evaluations/<evaluation_id>/
+    clips/
+    report/
 ```
 
-This means you can answer:
+A run ID is unique and immutable; its display name can be descriptive. Manifests include the code commit and dirty-worktree status, relevant patch when needed, dependency versions/lock hash, host hardware, game build, scenario version, schema versions, seeds, and parent run/checkpoint.
 
-> â€œWhat exactly produced this checkpoint?â€
+Keep raw datasets immutable. Derived datasets reference their source and preprocessing version. Track small configurations and manifests in Git; store large videos, trajectories, and model files outside source control. Add ignore rules and a backup/retention policy as part of that implementation.
 
-without guessing.
+### Checkpoint contract
 
----
+A checkpoint must contain or reference:
 
-# 39. Experiment naming
+- Policy/value parameters and model architecture.
+- Optimizer, scheduler, and mixed-precision state when used.
+- Observation normalization and wrapper state needed for inference.
+- Training counters, current schedule progress, RNG state, and seed configuration.
+- Resolved config and observation/action/reward schema versions.
+- Code/dependency versions, game/scenario metadata, and parent checkpoint.
+- Validation results, if available, and artifact checksums.
 
-Use names that are human-readable.
+Use the framework's supported serialization plus explicit metadata for state it does not preserve. Write checkpoints atomically, verify loadability, and update `latest`/`best` references only after a successful write. `Best` means best by the predeclared validation metric, never best on the final test set.
 
-Example:
+Distinguish three operations:
+
+| Operation | Promise |
+|---|---|
+| Inference load | Restore a compatible policy and preprocessing for frozen play |
+| Training resume | Restore learning state and continue from a verified episode boundary |
+| Exact replay | Reproduce a trajectory only when the environment and all relevant state support it |
+
+The initial resume guarantee is a completed PPO update followed by a fresh episode. Mid-rollout recovery and exact live-CS2 trajectory restoration are not promised. Record discarded partial work after a crash. Branching from an older checkpoint creates a new run with lineage; it does not overwrite history.
+
+### Comparing checkpoints over time
+
+Run saved checkpoints against the same versioned scenario suite and show scores plus matched clips. Use repeated trials when CS2 is nondeterministic. Label this as comparison under matched conditions, not exact restoration of a historical game state.
+
+## 11. CLI, GUI, and visual explanations
+
+### CLI as the operational interface
+
+Only `lynxai doctor` is implemented today. Add commands when their backend capability exists:
+
+| Planned command | Purpose |
+|---|---|
+| `lynxai doctor --profile core\|training\|cs2` | Check prerequisites for a specific workflow |
+| `lynxai smoke-test` | Run the bounded simulation/train/save/load/evaluate workflow |
+| `lynxai probe-cs2 --config HOST_CONFIG` | Verify live host capabilities and write a probe report |
+| `lynxai train --config EXPERIMENT_CONFIG` | Start a traceable training run |
+| `lynxai train --resume CHECKPOINT` | Continue compatible training in a new run with lineage |
+| `lynxai evaluate --checkpoint CHECKPOINT --suite SUITE` | Run frozen evaluation |
+| `lynxai record-demo --config COLLECTION_CONFIG` | Record aligned human demonstrations |
+| `lynxai inspect-run RUN_ID` | Summarize status, provenance, metrics, and failures |
+| `lynxai compare RUN_A RUN_B` | Compare compatible evaluation results |
+| `lynxai report RUN_ID` | Produce a report from recorded artifacts |
+| `lynxai gui` | Open the lab application |
+
+Commands should provide actionable errors and meaningful exit codes. Print the run ID and artifact path when work starts. A diagnostic report must distinguish required failures, optional capabilities, and checks not performed.
+
+### Lab interface
+
+The intended experience is: **create experiment → run → inspect → compare → improve**.
+
+Build the interface in two stages:
+
+1. **Monitor:** live view, processed observation, run state, task outcomes, action factors, reward components, timings, logs, and stop/pause controls.
+2. **Research workspace:** experiment editor, training/validation curves, checkpoint browser, comparisons, demonstration browser, highlights, and report export.
+
+The GUI calls the same runner as the CLI. Training and capture run outside the GUI thread. Closing the window follows an explicit choice to stop the worker or leave an intentionally detached run; it must not silently orphan controls.
+
+Keep training, demonstration recording, and frozen evaluation visually distinct. Requesting a mode switch finishes or cancels the current phase according to the runner's lifecycle. Show the active checkpoint/policy version and any invalid data or host failure.
+
+Action probabilities and entropy help explain policy behavior, but are not calibrated confidence estimates. For factorized actions, show separate distributions for yaw, pitch, fire, and later movement rather than a misleading single list of mutually exclusive keys.
+
+### Recording and highlights
+
+Begin with short evaluation recordings and clips around failures. Add a rolling buffer after the live loop works. Configure pre-event/post-event duration, encoding rate, storage cap, and duplicate-event merging.
+
+Each clip records run, episode, scenario, policy/checkpoint version, timestamps, trigger, and associated metrics. Keep both interesting successes and representative failures. A highlight reel supplements the evaluation report; it does not replace it.
+
+Encoding and UI refresh must not block the action loop. Drop optional preview frames before allowing recording backlog to corrupt observations or actions. Track dropped frames and preserve synchronization metadata.
+
+## 12. Runtime, performance, and reliability
+
+### Measure the whole loop
+
+Record capture, preprocessing, inference, input dispatch, observation age, total control-loop time, reset time, and optimizer time. Report median and tail latency, especially p95/p99, plus missed deadlines. Game rendering rate, policy decision rate, and valid training transitions per second are different measurements.
+
+Estimate the real experiment budget before launching:
 
 ```text
-2026-09-01_baseline_kd_smallcnn
-2026-09-02_bc_wasd_lmb
-2026-09-03_bc_plus_ppo
-2026-09-05_reward_damage
-2026-09-07_temporal_stack4
+collection time ≈ required valid transitions / measured valid transitions per second
+wall-clock time ≈ collection + resets + updates + evaluation + expected recovery
 ```
 
-Avoid names like:
+At an ideal 10 transitions per second, one million transitions already needs about 27.8 hours of collection before overhead. Measure throughput on the actual game host; a fast simulator does not predict CS2 training time.
 
-```text
-run_final_final2_realfinal_v7
-```
+Store image rollouts efficiently. At 160 × 90 grayscale, 2,048 observations occupy about 28 MiB as raw bytes, or about 112 MiB with four stored frames per observation, before tensors, next observations, and other rollout fields. Float32 storage multiplies pixel memory by four. Estimate dataset and video size separately before collecting overnight.
 
-Use machine-readable IDs plus a human-readable experiment name.
+Profile CPU and GPU inference rather than assuming the GPU helps a small single-observation policy. Keep headroom for game rendering. Prefer a bounded queue and fresh observations over higher nominal throughput with stale inputs.
 
----
+### Long-run behavior
 
-# 40. Metrics dashboard
+Before unattended training, implement and test:
 
-Track multiple levels of metrics.
+- Input release on stop, lost focus, stalled worker, and exception.
+- Capture/event freshness checks and reset deadlines.
+- NaN/invalid-reward detection, disk-space limits, and bounded recording queues.
+- Periodic durable metrics and checkpoints at recoverable boundaries.
+- A finite retry policy for known recoverable host errors, with every retry logged.
+- A final status record describing completion, user stop, budget exhaustion, or failure.
 
-## Raw gameplay metrics
+Learning stagnation is different from infrastructure failure. A plateau should trigger an analysis flag or a declared early-stop rule, not an endless automatic restart. Do not silently change hyperparameters mid-run to force progress.
 
-- kills,
-- deaths,
-- K/D,
-- damage,
-- survival time,
-- round results.
+The minimum long-run rehearsal should deliberately stop and restart training from a checkpoint and confirm compatible predictions, restored counters, new run lineage, and clean input state. Resume learning only after the environment is ready.
 
-## Agent metrics
+## 13. Milestones and acceptance criteria
 
-- policy loss,
-- value loss,
-- entropy,
-- action distribution,
-- gradient statistics,
-- inference latency.
+The dependency path is **M0 → {M1 and M2} → M3 → M4 → M5**. M1 establishes the learning pipeline and M2 establishes the game host; they can proceed in parallel once the core contracts are defined. CS2 training depends on both being complete. M6 research branches follow evidence from the earlier stages.
 
-## Research metrics
+Each milestone should end with a short completion note linking code, configs, commands, test results, and artifacts. Numerical thresholds below are initial engineering targets. If a pilot shows that a target is inappropriate, record the reason and revise it before the qualifying run; do not lower a threshold after seeing the result simply to declare success.
 
-- imitation accuracy,
-- prediction accuracy,
-- generalization to unseen scenarios,
-- performance vs checkpoint,
-- reward efficiency.
+### M0 — Make the existing foundation installable and explicit
 
-## Systems metrics
+**Goal:** a new developer can install the project and understand exactly what currently works.
 
-- FPS,
-- GPU utilization,
-- CPU utilization,
-- memory usage,
-- capture latency,
-- inference latency,
-- end-to-end loop latency.
+Work:
 
-Do not optimize blindly.
+- Move or adapt Smoke2D into the installed `lynxai` namespace and update imports deliberately.
+- Adopt the Gymnasium contract, declared spaces, and termination/truncation semantics.
+- Add validated task-specific configuration and configurable artifact paths.
+- Choose a supported Python/dependency pinning workflow, document CPU and game-host setup, and add fast CI checks.
+- Keep core imports usable without optional GUI or CS2 host dependencies.
 
-Measure first.
+**Acceptance:** existing behavior remains covered; environment checks and new contract tests pass; a wheel installed outside the checkout can import and run Smoke2D; diagnostics identify which workflow is ready. No live CS2 result is required.
 
----
+### M1 — Complete the smallest learning experiment
 
-# 41. Build an evaluation suite
+**Goal:** train, save, reload, and evaluate a learned Smoke2D policy.
 
-A final score is not enough.
+Work:
 
-Create standardized tests.
+- Add random and scripted baselines, a small PPO/MLP training path, and the run artifact structure.
+- Record configs, seeds, metrics, update counts, and package/code versions.
+- Save/load a policy and run frozen evaluation with fixed validation seeds.
+- Implement controlled stop and resume at a completed-update boundary.
 
-Example:
+**Acceptance:** the scripted policy demonstrates task solvability; PPO achieves at least 90% goal success on 100 held-out reset seeds for each of three training seeds within a declared budget; random baseline results are reported. Reloaded deterministic predictions match on fixed observations, evaluation leaves parameters unchanged, and resume produces a traceable new run.
 
-```text
-Evaluation Suite A
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-Movement          10 scenarios
-Aim               10 scenarios
-Target reaction   10 scenarios
-Combat            20 scenarios
-Prediction        20 scenarios
-```
+If the learning target fails, diagnose the task/API/reward/trainer before adding new simulation features. Once this gate passes, stop expanding the 2D game. A GUI is not a prerequisite.
 
-Each model gets the same scenarios.
+### M2 — Prove the controlled CS2 loop
 
-Then the GUI can produce:
+**Goal:** establish that the selected game host can support automated experiments.
 
-```text
-Checkpoint 01
-Movement      22%
-Combat         3%
-Prediction     â€”
+Work:
 
-Checkpoint 20
-Movement      81%
-Combat        47%
-Prediction     â€”
+- Select the host and document tested capture, input, event, and scenario/reset mechanisms.
+- Implement the first target-acquisition scenario and a live probe command.
+- Calibrate camera increments and control rate; measure event delay and reset time.
+- Record short traces and test stop, focus loss, stale capture, and failed reset behavior.
 
-Checkpoint 47
-Movement      92%
-Combat        73%
-Prediction    65%
-```
+**Acceptance:** a scripted/human probe produces verified outcomes; 100 attempted reset-and-episode cycles achieve at least 99% valid completion without manual correction; every failure is reported; event counts match the probe evidence; held inputs are released in all exercised failure cases. Publish latency distributions and demonstrate that the chosen control rate meets its declared freshness/deadline limits.
 
-This is how you demonstrate genuine improvement.
+**Decision gate:** if outcomes or resets cannot be made reliable, document the exact missing capability and choose a supported integration alternative before scheduling CS2 RL. Cloud-only development continues independently.
 
----
+### M3 — Establish a measurable CS2 learning baseline
 
-# 42. â€œCool eventâ€ detector
+**Goal:** complete the first useful release on target acquisition.
 
-The highlight system can grow into a general anomaly detector.
+Work:
 
-Define an event score:
+- Freeze a versioned task, action calibration, sparse reward, and train/validation/test scenario split.
+- Evaluate no-op, random, and simple scripted controllers with information access labeled.
+- Run a short visual PPO pilot, then the declared multi-seed experiment.
+- Add basic reports and matched evaluation clips, including failures.
 
-```text
-cool_score = weighted combination of:
-    reward spike
-    rare event
-    unusual accuracy
-    prediction success
-    new record
-```
+**Acceptance:** all baselines and three PPO training seeds have complete artifacts; checkpoints reload and evaluate; invalid episode counts and system costs are reported. A learning claim requires a predeclared practical improvement over random valid actions on the held-out primary metric, supported by per-seed results and uncertainty.
 
-Then only clip the strongest moments.
+Set the practical effect threshold after the baseline pilot and before the main comparison. If evidence is inconclusive, the infrastructure can be complete while the learning goal remains open. Diagnose perception, timing, exploration, and reward using traces; do not report a reward curve alone as success.
 
-You can also store â€œinteresting but not highlight-worthyâ€ events for analysis.
+### M4 — Measure the value of human demonstrations
 
-This separates:
+**Goal:** determine whether imitation improves initial behavior or learning efficiency.
 
-```text
-highlights/
-analysis_events/
-```
+Work:
 
----
+- Add aligned human capture, dataset manifests, session splits, and quality inspection.
+- Train BC using the same policy observation/action contract.
+- Initialize PPO from BC and record transfer semantics and parentage.
+- Compare PPO, BC, and BC+PPO under the evaluation protocol in section 9.
 
-# 43. Automatic report generation
+**Acceptance:** action/frame alignment has been inspected; held-out sessions are separate; all three conditions have reproducible configs, compatible checkpoints, and a report covering task success, interactions, wall-clock cost, and demonstration effort. State whether BC helps, hurts, or remains inconclusive. No outcome is predetermined.
 
-Every experiment should optionally generate:
+### M5 — Turn the system into a usable research lab
 
-```text
-reports/
-â””â”€â”€ 2026-09-03_bc_plus_ppo/
-    â”œâ”€â”€ summary.html
-    â”œâ”€â”€ reward_curve.png
-    â”œâ”€â”€ evaluation.png
-    â”œâ”€â”€ latency.png
-    â”œâ”€â”€ checkpoint_comparison.png
-    â””â”€â”€ metrics.csv
-```
+**Goal:** make repeated experiments observable, recoverable, and easy to compare.
 
-The report should include:
+Work:
 
-- experiment goal,
-- configuration,
-- model,
-- reward function,
-- training duration,
-- metrics,
-- charts,
-- best checkpoint,
-- notes,
-- highlight clips.
+- Add the monitor GUI and checkpoint/run browser using existing backend operations.
+- Add rolling highlights, failure clips, matched checkpoint comparisons, and report export.
+- Rehearse pause/stop/resume and an unattended session with resource limits and fault handling.
+- Document a complete example experiment from configuration to interpretation.
 
-That turns every experiment into a reusable research artifact.
+**Acceptance:** the same experiment can be launched from CLI and GUI; controls reflect actual worker state; artifacts remain usable after interruption; recording stays within its declared latency/storage budget; a report links provenance, metrics, representative clips, and limitations.
 
----
+Minimal monitoring can be added during M3/M4 when it helps debugging, but a polished UI must not block the learning experiment.
 
-# 44. Portfolio presentation
+### M6 — Expand capability through isolated research branches
 
-The GitHub README should tell a story.
+**Goal:** progress from stationary aiming toward movement, duels, generalization, and richer behavior.
 
-## Suggested structure
+Choose one branch from section 15 at a time. Each needs a baseline, a new or extended evaluation suite, a budget, and an acceptance criterion set before the run. Retain earlier suites to detect regressions.
 
-### Hero section
+A branch is complete when it answers its question with evidence. Promoting a new default requires a useful measured benefit or a documented capability gain with acceptable cost.
 
-> **Learning to Play an FPS with Reinforcement Learning**
+## 14. Next implementation tasks
 
-A one-paragraph explanation and a GIF/video.
+These are the immediate backlog, in order. They replace generic instructions to create a repository or package that already exists.
 
-### System diagram
+- [ ] **Normalize the environment API.** Package Smoke2D under `lynxai`, expose Gymnasium spaces, distinguish goal/fall termination from time-limit truncation, and update the existing tests without losing their behavioral coverage.
+- [ ] **Define the smoke experiment.** Add a dedicated validated config for the five-value observation and four actions. Keep the CS2 scaffold separate.
+- [ ] **Make setup repeatable.** Document installation of core/test/PPO dependencies, select compatible pinned versions, and verify the installed package from outside the checkout.
+- [ ] **Introduce minimal run records.** Create a unique run directory with resolved config, manifest, metrics, and clear final status. Support a configurable artifact root.
+- [ ] **Add baseline evaluation.** Run random and scripted agents through the same evaluator; save per-episode outcomes and seed lists.
+- [ ] **Integrate library PPO.** Train the small MLP with explicit budgets and diagnostics. Confirm real updates occur.
+- [ ] **Add checkpoint and frozen evaluation.** Verify save/load predictions, immutable evaluation behavior, and a documented resume boundary.
+- [ ] **Run the M1 experiment.** Collect the three-seed learning evidence and record what passed or failed.
+- [ ] **Complete the CS2 capability note.** In parallel with the smoke work where practical, identify the game host and test capture, input, outcomes, and reset. Do not guess capabilities from the cloud environment.
 
-Show:
+Every coding task should identify its milestone, define its validation, and update documentation when a proposed interface becomes real. Avoid building unrelated future modules simply because they appear in the target architecture.
 
-```text
-observation â†’ vision â†’ policy â†’ action â†’ environment â†’ reward
-```
+## 15. Later research program
 
-### Training progression
+These directions preserve the broader vision. They are a menu of experiments with prerequisites, not a promise to implement everything.
 
-Show clips from:
+| Direction | Prerequisite | First comparison | Evidence needed to adopt it |
+|---|---|---|---|
+| Moving targets and duels | Reliable stationary task and calibrated actions | Stationary versus controlled motion; then add movement against one opponent | Improvement on the new task without hidden changes to reward or information access |
+| Visual representation | Working visual baseline | Grayscale versus color; low versus higher resolution | Held-out score and latency/memory trade-off |
+| Control frequency | Measured timing and reliable capture | 10 versus 20 versus 30 decisions/s where supported | Task benefit after accounting for action duration, discounts, and wall-clock cost |
+| Reward shaping | Trustworthy event/state signals | Sparse reward versus one bounded shaping term | Faster learning without worse task outcomes or exploitable behavior |
+| Observation access | Explicit information boundaries | Vision-only, structured-state, and hybrid conditions | Clearly labeled performance and generalization differences |
+| Temporal memory | Motion/occlusion tasks and frame-stack baseline | Single frame, frame stack, then GRU/LSTM | Benefit on tasks requiring history, with state-reset correctness and compute cost |
+| Opponent prediction | Aligned sequences and valid future labels | Persistence/constant-velocity baseline versus a small learned predictor | Held-out forecasting benefit, then downstream policy benefit in a separate ablation |
+| Curriculum | Multiple validated scenario difficulty levels | Fixed sampling versus a declared adaptive sampler | Better transfer to a frozen evaluation distribution; no neglect of earlier skills |
+| Human behavior analysis | Comparable human/agent tasks and reliable timing | Reaction, aim correction, movement, and firing distributions | Reproducible behavioral differences with measurement limitations stated |
+| Self-play | Reliable duel resets and repeatable opponents | Fixed opponent pool versus a versioned training pool | Improvement against frozen opponents and held-out styles, not only the latest adversary |
+| Objective play | Combat/movement competence and observable objectives | One plant/defuse/defend task at a time | Objective completion under new layouts and conditions |
+| Hierarchical skills | Multiple independently useful skills | Monolithic policy versus a small skill selector | Better task completion or sample efficiency with controlled complexity |
+| Custom PPO | Trusted library results and diagnostic tests | Own implementation versus library on Smoke2D first | Correct updates and comparable results under matched conditions |
+| Multiple machines | Single-host profiling identifies a bottleneck | Local inference/learning versus separated workloads | End-to-end throughput gain after network delay, serialization, and recovery costs |
 
-```text
-Episode 1
-Episode 500
-Episode 5,000
-Episode 20,000
-```
+### Prediction as a separate scientific question
 
-### Experiments
+Start with a defined target such as next visible movement direction or future position at fixed time horizons. Specify whether positions are screen-space or world-space, how occlusion is labeled, and which inputs are available at inference. Split by session/scenario and prevent future frames from entering the input pipeline.
 
-Show tables and graphs.
+Measure error by horizon, calibration where probabilities are predicted, and performance against a simple persistence baseline. Then compare an agent with and without the predictive representation while holding other conditions fixed. Accurate forecasting does not automatically improve action selection.
 
-### Human imitation
+### Curriculum and self-play constraints
 
-Show how demonstrations affected learning.
+Use training/validation diagnostics to adapt practice; never use the final test suite to choose the curriculum. Retain some earlier/easier scenarios to detect forgetting. Version scenario sampling weights so a run can be interpreted.
 
-### Prediction
+For self-play, retain frozen opponent checkpoints, record opponent identity for every episode, and evaluate cross-play against a stable pool. A rising win rate against a changing opponent alone does not establish overall progress. Team coordination and full match objectives follow only after one-agent experiments are reliable.
 
-Show successful future-behavior predictions.
+## 16. Risks and decision points
 
-### Checkpoints
+| Risk or unknown | Early signal | Response |
+|---|---|---|
+| No reliable CS2 reset or outcome source | Frequent manual intervention or unverifiable labels | Resolve during M2; change supported integration method or keep CS2 training explicitly blocked |
+| Real-time data is misaligned | Reward arrives in the wrong episode, stale observations, inconsistent actions | Inspect timestamped traces and event deduplication before changing the model |
+| Sparse reward prevents exploration | Human/script succeeds but random/PPO almost never earns reward | Use BC initialization, easier training scenarios, or one tested shaping term |
+| Preprocessing removes useful detail | Target cannot be located in saved policy frames | Adjust crop/resolution/color, then version and rerun the baseline |
+| Training reward rewards the wrong behavior | High return with low task success or inactivity | Audit reward components and score with independent task metrics |
+| Generalization is weak | Strong training performance, weak held-out positions or sessions | Audit leakage and split quality, vary training scenarios, simplify/tune the model |
+| Game rendering competes with training | Control deadlines degrade during optimization or recording | Separate collection/update phases, reduce optional work, profile CPU/GPU placement |
+| Training time exceeds resources | Low valid transitions/s or slow reset dominates | Reduce the task/budget, improve reset/collection, or evaluate imitation before scaling |
+| CS2 updates invalidate experiments | Changed reset behavior, maps, timing, or observations | Record build versions, rerun probes, and create a new benchmark version |
+| Checkpoints cannot reproduce behavior | Missing preprocessing/calibration or incompatible action schemas | Enforce manifests and compatibility checks; test loads in a fresh process |
+| GUI and feature work delay evidence | Many controls, no completed baseline report | Return to the current milestone gate and defer unrelated UI features |
+| Storage becomes unmanageable | Unbounded recordings, duplicate datasets, low free space | Use retention budgets, immutable source references, and verified archival |
 
-Show the same scenario across checkpoints.
+When learning fails, diagnose in this order: **scenario solvability → capture/input/reset → observation and event alignment → reward/episode semantics → parameter updates → exploration → model capacity**. Change one cause at a time and retain the failed run's evidence.
 
-### Engineering
+## 17. Maintaining this plan and publishing results
 
-Explain:
+This document defines direction, stable contracts, milestone gates, and research priorities. Detailed host setup, experiment logs, and design decisions belong under `docs/` as they become concrete; link them here rather than duplicating them throughout the plan.
 
-- architecture,
-- latency,
-- data pipeline,
-- checkpointing,
-- GUI,
-- reproducibility.
+For a significant decision, record:
 
-### Lessons learned
+- The question and constraints.
+- Alternatives considered and the chosen default.
+- Evidence supporting the decision.
+- Consequences and the condition that would justify revisiting it.
 
-Be honest about failure.
+Update the current-foundation table and milestone status when implementation is validated. Keep proposed interfaces clearly labeled until they work. Do not claim deterministic CS2 replay, available telemetry, faster-than-real-time execution, or GPU support without a measured demonstration.
 
-Examples:
+A publishable experiment report should contain its question, exact setup, baselines, budgets, seed-level results and uncertainty, failure cases, artifact references, and limitations. Portfolio material should show the same scenarios across checkpoints, learning and generalization curves, and the engineering that makes those comparisons credible.
 
-> â€œThe first reward function produced a stationary strategy.â€
+The eventual README should provide a short project explanation, one representative video, an architecture diagram, setup/run instructions, a results table, and links to reproducible experiments. A strong result can be narrow: showing exactly how a small agent learned one behavior is a useful foundation for the next behavior.
 
-> â€œIncreasing image resolution improved perception but made training less efficient.â€
+## 18. Technical references
 
-> â€œBehavioral cloning greatly improved initial exploration.â€
+Use these maintained references when implementing the relevant milestone. Check the installed library version and tested game build; documentation does not establish that a particular CS2 capability is available on the chosen host.
 
-That kind of writing makes the project feel credible.
+- [Gymnasium environment API](https://gymnasium.farama.org/api/env/) — spaces, reset, step, and episode semantics.
+- [Gymnasium: handling time limits](https://gymnasium.farama.org/tutorials/gymnasium_basics/handling_time_limits/) — termination, truncation, and bootstrapping.
+- [Stable-Baselines3: custom environments](https://stable-baselines3.readthedocs.io/en/master/guide/custom_env.html) — environment compatibility and image conventions.
+- [Stable-Baselines3 PPO](https://stable-baselines3.readthedocs.io/en/master/modules/ppo.html) — supported spaces, policy options, and hyperparameters.
+- [Stable-Baselines3: RL tips](https://stable-baselines3.readthedocs.io/en/master/guide/rl_tips.html) — evaluation and practical experiment guidance.
+- [PyTorch reproducibility notes](https://docs.pytorch.org/docs/stable/notes/randomness.html) — seeding and limits of determinism across platforms and releases.
+- [Valve Developer Community: Counter-Strike 2 Workshop Tools](https://developer.valvesoftware.com/wiki/Counter-Strike_2_Workshop_Tools) — starting point for investigating controlled maps and host tooling; verify each needed capability in M2.
 
----
-
-# 45. Suggested development roadmap
-
-The roadmap should be aggressive about reaching the real target.
-
-## Phase 0 â€” Setup
-
-Build:
-
-- repo,
-- Python package,
-- config system,
-- path manager,
-- CLI skeleton,
-- GUI skeleton,
-- logging.
-
-Deliverable:
-
-```text
-lynxai doctor
-```
-
-works.
-
----
-
-## Phase 1 â€” 2D smoke test
-
-Use AI assistance to generate the smallest possible 2D platformer.
-
-Implement:
-
-- environment API,
-- actions,
-- observations,
-- rewards,
-- training loop,
-- checkpoint save/load,
-- GUI start/stop.
-
-Deliverable:
-
-> Agent learns a trivial behavior end-to-end.
-
-Then move on.
-
----
-
-## Phase 2 â€” Controlled CS2 integration
-
-Goal:
-
-> **Observe + act + reset + measure.**
-
-Do not optimize the AI yet.
-
-Deliverable:
-
-```text
-controlled environment
-        â†“
-Python adapter
-        â†“
-correct observations/actions/events
-```
-
-Keep training and repeatable evaluation in the controlled environment. Online-oriented validation, when appropriate, belongs in a separate optional tier and should not become a training dependency.
-
----
-
-## Phase 3 â€” Random baseline
-
-Before RL, create dumb baselines.
-
-Examples:
-
-```text
-random movement
-random shooting
-simple scripted movement
-```
-
-These are necessary because they provide lower-bound comparisons.
-
-Deliverable:
-
-> A baseline report.
-
----
-
-## Phase 4 â€” First RL agent
-
-Start with:
-
-```text
-WASD + LMB
-```
-
-Reward:
-
-```text
-kill +10
-death -10
-```
-
-Use a small CNN and PPO.
-
-Deliverable:
-
-> A measurable learning curve.
-
-It does not need to be good yet.
-
----
-
-## Phase 5 â€” Human demonstrations
-
-Record yourself.
-
-Create behavioral-cloning dataset.
-
-Train imitation model.
-
-Then compare:
-
-```text
-RL from scratch
-vs.
-imitation only
-vs.
-imitation + RL
-```
-
-Deliverable:
-
-> First major research result.
-
----
-
-## Phase 6 â€” Automatic highlights + checkpoint browser
-
-Add:
-
-- rolling buffer,
-- highlight detection,
-- automatic clip saving,
-- checkpoint metadata,
-- checkpoint comparison.
-
-Deliverable:
-
-> â€œWatch the agent improve.â€
-
----
-
-## Phase 7 â€” Performance optimization
-
-Profile:
-
-- capture,
-- preprocessing,
-- inference,
-- environment loop.
-
-Test:
-
-- observation resolution,
-- action frequency,
-- model size.
-
-Deliverable:
-
-> Performance/accuracy trade-off report.
-
----
-
-## Phase 8 â€” Evaluation suite
-
-Build repeatable scenarios.
-
-Create checkpoint-vs-checkpoint testing.
-
-Deliverable:
-
-> Standardized model comparison.
-
----
-
-## Phase 9 â€” Prediction
-
-Train a separate behavior-prediction model.
-
-Deliverable:
-
-> Measured next-action/next-movement prediction accuracy.
-
----
-
-## Phase 10 â€” Temporal memory
-
-Test:
-
-```text
-single frame
-vs.
-frame stack
-vs.
-recurrent memory
-```
-
-Deliverable:
-
-> Study of temporal information.
-
----
-
-## Phase 11 â€” Adaptive curriculum
-
-Measure weaknesses.
-
-Generate more difficult scenarios around them.
-
-Deliverable:
-
-> Agent automatically focuses training on weaknesses.
-
----
-
-## Phase 12 â€” Advanced controlled objectives
-
-Introduce additional mechanics/objectives in the controlled environment.
-
-Deliverable:
-
-> Agent moves from combat-only behavior toward objective-oriented behavior.
-
----
-
-## Phase 13 â€” Self-play / AI-vs-AI
-
-Train and evaluate agents against each other.
-
-Deliverable:
-
-> Study of adaptation and emergent strategy in a controlled environment.
-
----
-
-# 46. The ideal initial implementation
-
-Do not build the entire system above on day one.
-
-Your first useful version should be approximately:
-
-```text
-lynxai/
-â”œâ”€â”€ src/
-â”‚   â””â”€â”€ lynxai/
-â”‚       â”œâ”€â”€ agent.py
-â”‚       â”œâ”€â”€ environment.py
-â”‚       â”œâ”€â”€ trainer.py
-â”‚       â”œâ”€â”€ config.py
-â”‚       â””â”€â”€ cli.py
-â”‚
-â”œâ”€â”€ configs/
-â”‚   â””â”€â”€ baseline.yaml
-â”‚
-â”œâ”€â”€ runs/
-â”œâ”€â”€ checkpoints/
-â”œâ”€â”€ clips/
-â””â”€â”€ README.md
-```
-
-Then expand the structure as features become real.
-
-Avoid building empty folders for every future idea before you need them.
-
----
-
-# 47. First coding milestone checklist
-
-When you begin the real implementation, follow this order.
-
-### Step 1
-Create project root.
-
-### Step 2
-Create Python package.
-
-### Step 3
-Implement configuration loading.
-
-### Step 4
-Implement path manager.
-
-### Step 5
-Implement CLI.
-
-### Step 6
-Implement environment interface.
-
-### Step 7
-Build the tiny 2D smoke environment.
-
-### Step 8
-Train a trivial agent.
-
-### Step 9
-Checkpoint it.
-
-### Step 10
-Reload it.
-
-### Step 11
-Run frozen evaluation.
-
-### Step 12
-Implement the controlled CS2 environment adapter.
-
-### Step 13
-Test observations/actions/events manually.
-
-### Step 14
-Add the first CNN policy.
-
-### Step 15
-Train the simplest RL agent.
-
-### Step 16
-Add automatic metrics.
-
-### Step 17
-Add checkpoints.
-
-### Step 18
-Add the GUI.
-
-### Step 19
-Add human demonstration capture.
-
-### Step 20
-Add imitation-learning pretraining.
-
-Do not move to complicated features until the previous step is observable and reproducible.
-
----
-
-# 48. Debugging rules
-
-These rules will save enormous amounts of time.
-
-## Rule 1
-When behavior is bad, first verify the environment.
-
-## Rule 2
-When training is bad, verify rewards before changing the network.
-
-## Rule 3
-When performance is slow, profile before shrinking everything.
-
-## Rule 4
-When results improve, reproduce them before celebrating.
-
-## Rule 5
-Never change five variables in one experiment.
-
-## Rule 6
-Keep a checkpoint before every major change.
-
-## Rule 7
-Always have a baseline.
-
-## Rule 8
-Always have a frozen evaluation mode.
-
----
-
-# 49. Common failure modes to expect
-
-## Failure: agent learns nothing
-
-Check:
-
-1. Can the agent actually act?
-2. Are observations correct?
-3. Are rewards firing?
-4. Is the episode resetting?
-5. Is the optimizer updating?
-6. Are gradients nonzero?
-7. Is the action space too large?
-
----
-
-## Failure: agent finds a stupid exploit
-
-That is reward hacking.
-
-Save the run.
-
-Name it something like:
-
-```text
-reward_hacking_stationary_strategy
-```
-
-Document it.
-
-Then change the reward or environment.
-
-It becomes part of the project story.
-
----
-
-## Failure: agent overfits
-
-Test it on scenarios it never trained on.
-
-This is why the evaluation suite and scenario generator matter.
-
----
-
-## Failure: inference is too slow
-
-Profile:
-
-```text
-capture
-preprocess
-model
-action
-```
-
-Then test:
-
-- lower resolution,
-- smaller model,
-- lower decision frequency,
-- GPU inference,
-- more efficient preprocessing.
-
-Only consider a second computer after the single-machine architecture is already correct.
-
----
-
-# 50. What â€œsuccessâ€ looks like at each level
-
-## Level 1
-
-```text
-Agent can learn a tiny 2D task.
-```
-
-## Level 2
-
-```text
-System can reliably observe and control the controlled CS2 environment.
-```
-
-## Level 3
-
-```text
-Agent learns a measurable behavior from reward.
-```
-
-## Level 4
-
-```text
-Human demonstrations improve the starting policy.
-```
-
-## Level 5
-
-```text
-Agent improves through RL after imitation learning.
-```
-
-## Level 6
-
-```text
-Agent's performance improves reproducibly across evaluation scenarios.
-```
-
-## Level 7
-
-```text
-Agent predicts opponent behavior above a useful baseline.
-```
-
-## Level 8
-
-```text
-Prediction improves decision-making.
-```
-
-## Level 9
-
-```text
-Agent handles more complex controlled objectives.
-```
-
-## Level 10
-
-```text
-The whole pipeline is polished enough to demonstrate as a serious portfolio project.
-```
-
-You do **not** need Level 10 to have a great project.
-
-Level 4â€“6 alone could already be a very strong portfolio piece if the experiments are well documented.
-
----
-
-# 51. The â€œresearch questionsâ€ list
-
-Whenever you do not know what to work on next, pick one question.
-
-### Observation
-
-- How does image resolution affect performance?
-- Does grayscale hurt or help?
-- Does frame stacking help?
-- Does a hybrid state representation help?
-
-### Action
-
-- How often should the agent act?
-- How does increasing the action space affect sample efficiency?
-- Does hierarchical control help?
-
-### Reward
-
-- Is sparse reward enough?
-- Does reward shaping accelerate learning?
-- What reward exploits appear?
-
-### Imitation
-
-- Does behavioral cloning speed up RL?
-- How much human data is enough?
-- Does spectator data help?
-
-### Prediction
-
-- How predictable are opponent movement patterns?
-- Does prediction improve combat performance?
-- How far into the future can the agent predict usefully?
-
-### Memory
-
-- Does temporal memory improve decisions?
-- How long should the memory horizon be?
-
-### Curriculum
-
-- Does adaptive training beat random training?
-- Does targeted weakness practice reduce total training time?
-
-### Generalization
-
-- Does training on one environment transfer to another?
-- Does a model trained on limited scenarios generalize to new scenarios?
-
-### Systems
-
-- What is the best performance/latency trade-off?
-- How much does a second machine help?
-- How many environment workers can one GPU support?
-
-These questions can keep the project alive for a very long time.
-
----
-
-# 52. One especially strong experiment matrix
-
-Eventually compare these four agents:
-
-```text
-A: RL from scratch
-
-B: Behavioral cloning
-
-C: Behavioral cloning + RL
-
-D: Behavioral cloning + RL + prediction
-```
-
-Then evaluate all four on the same test suite.
-
-This one table could become the centerpiece of the portfolio.
-
-Example:
-
-| Agent | Training efficiency | Combat | Prediction | Generalization |
-|---|---:|---:|---:|---:|
-| RL | baseline | baseline | â€” | baseline |
-| BC | high | medium | â€” | medium |
-| BC + RL | high | high | â€” | high |
-| BC + RL + prediction | high | very high | high | very high |
-
-The actual values must come from your experiments.
-
----
-
-# 53. Another very strong experiment: model size
-
-Compare:
-
-```text
-small CNN
-medium CNN
-large CNN
-```
-
-Measure:
-
-- reward,
-- accuracy,
-- inference time,
-- GPU memory,
-- training speed.
-
-The research question:
-
-> **Does a larger model actually improve the agent enough to justify the extra compute?**
-
-This directly answers your original concern about whether the AI must be huge.
-
----
-
-# 54. Another strong experiment: latency vs performance
-
-Build a graph of:
-
-```text
-decision frequency
-vs.
-performance
-```
-
-You may discover something surprising:
-
-> More frequent decisions are not always better if the model becomes noisy or the training becomes unstable.
-
-That is a valuable systems finding.
-
----
-
-# 55. Another strong experiment: human vs AI behavior
-
-Collect human gameplay data.
-
-Compare:
-
-```text
-reaction time
-mouse velocity
-movement transitions
-shooting cadence
-correction patterns
-```
-
-Visualize distributions.
-
-The point is not to fool an anti-cheat system.
-
-The point is to study:
-
-> **How close is learned behavior to real human behavior?**
-
-That is an interesting ML/behavioral modeling result on its own.
-
----
-
-# 56. GUI workflow should feel like a real product
-
-The user experience should be:
-
-### Create experiment
-
-```text
-New Experiment
-
-Name: baseline_kd
-Model: Small CNN
-Actions: WASD + LMB
-Reward: Kill/Death
-Observation: 160Ã—90
-```
-
-Click:
-
-**Create**
-
-### Run
-
-Click:
-
-**Start Training**
-
-Watch:
-
-- live metrics,
-- live preview,
-- current action,
-- reward events,
-- GPU usage.
-
-### Checkpoint
-
-The app automatically saves.
-
-### Something cool happens
-
-The app says:
-
-> **HIGHLIGHT SAVED**
-
-### Later
-
-Open:
-
-**Checkpoints â†’ Compare 001 vs 047**
-
-### Generate report
-
-Click:
-
-**Generate Report**
-
-And the project creates the graph/report/video summary automatically.
-
-That is the kind of polish that turns a raw ML experiment into a memorable portfolio project.
-
----
-
-# 57. GUI notifications worth having
-
-Useful events:
-
-```text
-Training started
-Checkpoint saved
-New best reward
-New best evaluation
-Training stalled
-Highlight detected
-Experiment complete
-Evaluation complete
-```
-
-Avoid constant noisy notifications.
-
-Make important events obvious.
-
----
-
-# 58. Training safety / recovery
-
-Long-running jobs should recover gracefully.
-
-Build:
-
-- automatic checkpoints,
-- periodic metrics flushes,
-- clean shutdown handling,
-- restart-from-checkpoint support,
-- crash recovery where practical.
-
-If the process dies after six hours, you should not lose six hours of work.
-
-The ideal mental model is:
-
-> **The experiment can be stopped and resumed at almost any checkpoint.**
-
----
-
-# 59. Data management
-
-Use clear data labels.
-
-```text
-data/raw/
-    untouched source data
-
-data/processed/
-    normalized/transformed data
-
-data/demonstrations/
-    human behavior datasets
-
-data/scenarios/
-    generated controlled scenarios
-```
-
-Never overwrite raw data.
-
-That makes later experiments much easier.
-
----
-
-# 60. Version control strategy
-
-Git should track:
-
-- source code,
-- configs,
-- docs,
-- small metadata.
-
-Do not dump huge videos/models into Git.
-
-Use appropriate artifact storage for large outputs.
-
-Every checkpoint should still contain a code version/hash so that it can be traced back to the exact source revision.
-
----
-
-# 61. The â€œdo not build yetâ€ list
-
-This list matters because the project has a huge feature tree.
-
-Do **not** start with:
-
-- giant transformer,
-- complicated world model,
-- multi-agent coordination,
-- full bomb logic,
-- all weapons,
-- sophisticated prediction,
-- self-play,
-- enormous GUI,
-- two-computer distributed training.
-
-Start with:
-
-```text
-small observation
-small action space
-simple reward
-simple model
-controlled environment
-clean evaluation
-```
-
-Then grow.
-
----
-
-# 62. The long-term dream architecture
-
-When everything has matured, the project may look like:
-
-```text
-                           â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                           â”‚      GUI         â”‚
-                           â”‚  Lab / Monitor   â”‚
-                           â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                                    â”‚
-                           â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                           â”‚ Experiment       â”‚
-                           â”‚ Manager          â”‚
-                           â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                                    â”‚
-                 â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                 â”‚                  â”‚                   â”‚
-                 â–¼                  â–¼                   â–¼
-          Demonstrations      Scenario Engine      Live Environment
-                 â”‚                  â”‚                   â”‚
-                 â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”˜
-                              â–¼                  â–¼
-                         Data Store        Observations
-                              â”‚                  â”‚
-                              â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                                       â–¼
-                                Vision Encoder
-                                       â”‚
-                            â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                            â–¼                      â–¼
-                      World / Memory         Prediction
-                            â”‚                      â”‚
-                            â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                                       â–¼
-                                   Policy
-                                       â”‚
-                                       â–¼
-                                    Action
-                                       â”‚
-                                       â–¼
-                                  Environment
-                                       â”‚
-                                       â–¼
-                                    Reward
-                                       â”‚
-                                       â–¼
-                                    Trainer
-                                       â”‚
-                                       â–¼
-                                  Checkpoint
-                                       â”‚
-                           â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                           â–¼                       â–¼
-                      Evaluation              Highlights
-```
-
-That is the end-state, not the starting point.
-
----
-
-# 63. What to do the moment you start
-
-Your first working sprint should have one goal:
-
-> **Get the entire pipeline working with the smallest possible environment.**
-
-Do this in order:
-
-```text
-1. Create repo
-2. Create Python project
-3. Create config system
-4. Create path system
-5. Create CLI
-6. Create minimal GUI shell
-7. Create environment interface
-8. Have AI generate tiny 2D game
-9. Connect agent to 2D game
-10. Train successfully
-11. Save checkpoint
-12. Reload checkpoint
-13. Evaluate with frozen weights
-14. Build first CS2 controlled environment adapter
-15. Verify observation/action/reward loop
-16. Train first tiny CS2 agent
-```
-
-At that point, **you have officially started the real project.**
-
-Everything after that is an upgrade.
-
----
-
-# 64. The most important mindset for this project
-
-You are not trying to build the final super-agent immediately.
-
-You are building a **platform for experiments**.
-
-Every layer should make the next experiment easier.
-
-The project should feel like:
-
-```text
-Experiment
-   â†“
-Result
-   â†“
-Checkpoint
-   â†“
-Insight
-   â†“
-Next experiment
-```
-
-not:
-
-```text
-write huge AI
-   â†“
-run
-   â†“
-hope
-```
-
-The strongest possible outcome is not necessarily an agent that becomes unbelievably strong.
-
-A strong outcome is:
-
-> **You can clearly demonstrate how the agent learned, what helped, what failed, why it failed, and how each experiment changed the system.**
-
-That story is the portfolio.
-
----
-
-# 65. Final project feature list
-
-Keep this as the master backlog.
-
-## Core
-
-- [ ] Python project structure
-- [ ] Config system
-- [ ] Path manager
-- [ ] Clean CLI
-- [ ] GUI
-- [ ] Environment abstraction
-- [ ] Observation adapter
-- [ ] Action adapter
-- [ ] Reward adapter
-- [ ] Event detection
-- [ ] Logging
-
-## ML
-
-- [ ] Small CNN
-- [ ] PPO baseline
-- [ ] Behavioral cloning
-- [ ] PPO fine-tuning
-- [ ] Temporal model
-- [ ] Prediction model
-- [ ] Adaptive curriculum
-- [ ] Hybrid state model
-- [ ] Self-play
-
-## Data
-
-- [ ] Human demonstrations
-- [ ] Spectator demonstrations
-- [ ] Scenario dataset
-- [ ] Processed dataset
-- [ ] Dataset metadata
-
-## Training
-
-- [ ] Training mode
-- [ ] Evaluation mode
-- [ ] Train/evaluate cycles
-- [ ] Overnight mode
-- [ ] Automatic stall detection
-- [ ] Resume from checkpoint
-- [ ] Automatic best-model selection
-
-## Checkpoints
-
-- [ ] Save model
-- [ ] Save optimizer
-- [ ] Save config
-- [ ] Save metrics
-- [ ] Save environment/version info
-- [ ] Save code revision
-- [ ] Checkpoint browser
-- [ ] Restore
-- [ ] Compare checkpoints
-- [ ] Same-scenario checkpoint replay
-
-## Highlights
-
-- [ ] Rolling video buffer
-- [ ] Kill clips
-- [ ] Multi-kill clips
-- [ ] Reward-spike clips
-- [ ] Prediction-success clips
-- [ ] Round-win clips
-- [ ] Metadata alongside clips
-- [ ] Highlight browser
-
-## Evaluation
-
-- [ ] Standard scenarios
-- [ ] Generalization tests
-- [ ] Model comparison
-- [ ] Reward-function comparison
-- [ ] Observation-resolution comparison
-- [ ] Latency comparison
-- [ ] Model-size comparison
-
-## Advanced gameplay
-
-- [ ] Better aiming
-- [ ] RMB
-- [ ] Additional controlled mechanics
-- [ ] Grenades
-- [ ] Objective behavior
-- [ ] Team/coordination research
-
-## Research
-
-- [ ] Reward hacking analysis
-- [ ] Human-vs-AI behavior comparison
-- [ ] Prediction accuracy
-- [ ] Temporal modeling
-- [ ] Curriculum learning
-- [ ] Generalization
-- [ ] Model efficiency
-- [ ] Self-play
-
----
-
-# 66. The single sentence to keep coming back to
-
-> **Build the smallest system that can answer the next interesting question.**
-
-That principle will keep this project manageable even as the feature list becomes enormous.
-
----
-
-## References / current CS2 resources
-
-Valve currently describes Counter-Strike 2 as running on Source 2 and notes that Source 2 tools are available for community map makers and artists. îˆ€citeîˆ‚turn748072search1îˆ
-
-Valve's official Counter-Strike Workshop resources provide documentation and access points for community content creation, including map tooling resources. îˆ€citeîˆ‚turn748072search2îˆ‚turn748072search11îˆ
-
-Valve's current CS2 update notes show continued additions and changes to map scripting and game-state-related systems, reinforcing the need to version and pin your environment assumptions when doing long-running experiments. îˆ€citeîˆ‚turn748072search0îˆ‚turn748072search10îˆ
-
-Valve's developer documentation also documents LAN/practice-oriented tooling and demo playback concepts that can be useful when designing isolated testing/evaluation workflows. îˆ€citeîˆ‚turn748072search9îˆ
+The current code and configurations remain the source of truth for what runs today. This plan defines what to build next and the evidence required to call it progress.
