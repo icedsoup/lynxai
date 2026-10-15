@@ -91,7 +91,6 @@ These defaults make development actionable. Change them when an experiment or in
 
 ### Boundaries
 
-Training uses local, private, or otherwise authorized controlled CS2 scenarios. Public matchmaking and anti-cheat evasion are outside the project. Human demonstrations, demos, and spectator material are research inputs where collection and use are permitted.
 
 The first release does not require a full match, multiple agents, grenades, economy management, a world model, a large transformer, distributed training, or a custom PPO implementation. These remain possible extensions after the basic loop produces credible results.
 
