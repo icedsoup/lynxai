@@ -1,0 +1,18 @@
+# Smoke2D v1: numeric observations and left/right/jump/noop actions are fixed.
+schema_version: 1
+experiment:
+  name: smoke2d
+  seed: 1337
+  artifact_root: ./artifacts
+environment:
+  id: smoke2d_v1
+  gravity: -1.0
+  jump_velocity: 4.0
+  move_speed: 1.0
+  max_steps: 300
+  fall_y: -10.0
+  goal_x: 20.0
+  goal_radius: 1.0
+  platforms:
+    - {x_start: -2.0, x_end: 6.0, y: 0.0}
+    - {x_start: 9.0, x_end: 40.0, y: 0.0}

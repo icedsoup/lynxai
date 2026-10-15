@@ -7,9 +7,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+import gymnasium as gym
 import numpy as np
+from gymnasium import spaces
 
-from .base import Environment
+from lynxai.utils.validation import finite_number
 
 ACTIONS = ("left", "right", "jump", "noop")
 ACTION_INDEX = {name: i for i, name in enumerate(ACTIONS)}
@@ -20,6 +22,12 @@ class Platform:
     x_start: float
     x_end: float
     y: float
+
+    def __post_init__(self) -> None:
+        for name in ("x_start", "x_end", "y"):
+            finite_number(getattr(self, name), f"platform.{name}")
+        if self.x_start >= self.x_end:
+            raise ValueError("platform.x_start must be less than x_end")
 
 
 @dataclass(frozen=True)
@@ -38,34 +46,70 @@ class Smoke2DConfig:
         )
     )
 
+    def __post_init__(self) -> None:
+        for name in ("gravity", "jump_velocity", "move_speed", "fall_y", "goal_x", "goal_radius"):
+            finite_number(getattr(self, name), name)
+        if self.gravity >= 0:
+            raise ValueError("gravity must be negative")
+        for name in ("jump_velocity", "move_speed", "goal_radius"):
+            if getattr(self, name) <= 0:
+                raise ValueError(f"{name} must be positive")
+        if type(self.max_steps) is not int or self.max_steps <= 0:
+            raise ValueError("max_steps must be a positive integer")
+        if not isinstance(self.platforms, tuple) or not self.platforms:
+            raise ValueError("platforms must be a nonempty tuple of Platform objects")
+        if any(not isinstance(p, Platform) for p in self.platforms):
+            raise ValueError("platforms must contain Platform objects")
+        ordered = sorted(self.platforms, key=lambda p: p.x_start)
+        if any(a.x_end >= b.x_start for a, b in zip(ordered, ordered[1:])):
+            raise ValueError("platforms must not overlap or share endpoints")
+        if any(p.y <= self.fall_y for p in self.platforms):
+            raise ValueError("platforms must be above fall_y")
+        if not any(p.x_start <= -1 and p.x_end >= 1 for p in self.platforms):
+            raise ValueError("one platform must cover the entire reset interval [-1, 1]")
 
-class Smoke2DEnv(Environment[np.ndarray, int]):
+
+class Smoke2DEnv(gym.Env[np.ndarray, int]):
     """Player starts on a platform, must jump a gap, and walk to a goal
     zone on the far platform. Falling into the gap ends the episode with
     a penalty; reaching the goal ends it with a reward.
     """
 
+    metadata = {"render_modes": []}
+
     def __init__(self, config: Smoke2DConfig | None = None):
         self.config = config or Smoke2DConfig()
+        self.action_space = spaces.Discrete(len(ACTIONS))
+        self.observation_space = spaces.Box(
+            low=np.array([-np.inf, -np.inf, -np.inf, 0, -np.inf], dtype=np.float32),
+            high=np.array([np.inf, np.inf, np.inf, 1, np.inf], dtype=np.float32),
+            dtype=np.float32,
+        )
+        self._needs_reset = True
         self._x = 0.0
         self._y = 0.0
         self._vy = 0.0
         self._steps = 0
         self._done = False
 
-    def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None) -> np.ndarray:
-        rng = np.random.default_rng(seed)
-        self._x = float(rng.uniform(-1.0, 1.0))
+    def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None) -> tuple[np.ndarray, dict[str, Any]]:
+        if options:
+            raise ValueError("Smoke2D reset does not support options")
+        super().reset(seed=seed)
+        self._x = float(self.np_random.uniform(-1.0, 1.0))
         self._y = self._ground_height_at(self._x)
         self._vy = 0.0
         self._steps = 0
         self._done = False
-        return self._observation()
+        self._needs_reset = False
+        return self._observation(), {}
 
-    def step(self, action: int) -> tuple[np.ndarray, float, bool, dict[str, Any]]:
-        if self._done:
-            raise RuntimeError("step() called after episode ended; call reset() first")
+    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        if self._needs_reset or self._done:
+            raise RuntimeError("step() requires an active episode; call reset() first")
 
+        if isinstance(action, (bool, np.bool_)) or not self.action_space.contains(action):
+            raise ValueError(f"action must be an integer in [0, {len(ACTIONS) - 1}], got {action!r}")
         cfg = self.config
         name = ACTIONS[action]
         self._steps += 1
@@ -93,7 +137,8 @@ class Smoke2DEnv(Environment[np.ndarray, int]):
             self._vy = 0.0
 
         reward = -0.01
-        done = False
+        terminated = False
+        truncated = False
         info: dict[str, Any] = {}
 
         reached_goal = abs(self._x - cfg.goal_x) <= cfg.goal_radius and self._on_ground()
@@ -102,19 +147,22 @@ class Smoke2DEnv(Environment[np.ndarray, int]):
 
         if reached_goal:
             reward += 10.0
-            done = True
+            terminated = True
             info["outcome"] = "goal"
         elif fell:
             reward -= 10.0
-            done = True
+            terminated = True
             info["outcome"] = "fell"
         elif timed_out:
             reward -= 1.0
-            done = True
+            truncated = True
             info["outcome"] = "timeout"
 
-        self._done = done
-        return self._observation(), reward, done, info
+        self._done = terminated or truncated
+        return self._observation(), reward, terminated, truncated, info
+
+    def close(self) -> None:
+        self._needs_reset = True
 
     def _ground_height_at(self, x: float) -> float:
         for platform in self.config.platforms:

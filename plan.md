@@ -2,7 +2,7 @@
 
 > Build a research platform that learns progressively more useful Counter-Strike 2 behaviors, makes its learning visible, and produces experiments that another person can understand and reproduce.
 
-**Status:** foundational design; most of the system is still to be implemented. Section 2 separates existing capabilities from planned ones. New commands, schemas, directories, and numerical targets below are proposed unless explicitly marked as implemented.
+**Status:** M0 foundation implemented and validated on Windows CPU; M1 learning infrastructure is next. Most of the research system remains to be implemented. Section 2 separates existing capabilities from planned ones. New commands, schemas, directories, and numerical targets below are proposed unless explicitly marked as implemented.
 
 **Guiding principle:** build the smallest complete experiment that answers the next important question. CS2 is the target; the 2D environment exists to verify the learning infrastructure.
 
@@ -53,27 +53,24 @@ The core comparison is **PPO from scratch versus behavioral cloning versus behav
 
 ## 2. Current foundation
 
-This inventory reflects the repository at commit `28b0b22` (`smoke2d`). Update it as implementation advances.
+This inventory reflects the M0 implementation. See [M0 completion evidence](docs/m0-foundation.md) and [setup instructions](README.md). Windows CPU checks passed locally; the Windows/Linux CI workflow is configured, with hosted CI results still pending.
 
 | Area | Implemented now | Remaining work |
 |---|---|---|
-| Package | `src/lynxai`, `python -m lynxai`, and the `lynxai` entry point | Development documentation, pinned dependency workflow, CI |
-| Diagnostics | `lynxai doctor` checks Python, PyTorch, CUDA availability, writable directories, and baseline config loading | Separate core, training, and CS2 host checks |
-| Configuration | YAML loaded into dataclasses in `utils/config.py` | Schema versions, value validation, unknown-key rejection, resolved config snapshots |
-| Paths | Runtime directory helpers in `utils/paths.py` | Configurable artifact root and installed-package behavior |
-| Simulation | `environments/smoke2d.py`: five numeric observations, four actions, goal/fall/timeout outcomes | Gymnasium compatibility, package relocation, trainer integration |
-| Tests | Six tests covering simulation behavior and package namespace | Contract, training, checkpoint, evaluation, and integration tests |
-| ML dependencies | PyTorch and Gymnasium declared; Stable-Baselines3 available through the `ppo` extra | A policy, training command, rollout collection, and evaluation runner |
+| Package | `src/lynxai`, module/console entry points, packaged Smoke2D and default YAML; source/wheel builds and isolated installed-wheel check | Hosted CI evidence; future module packaging |
+| Diagnostics | `lynxai doctor --profile core\|training`, custom smoke config and artifact-root flags, actual write probe, Gymnasium checks; CPU supported | Live CS2 host checks |
+| Configuration | Versioned, strictly validated Smoke2D YAML and direct physics config validation; separate legacy CS2 scaffold | Training configuration, resolved snapshots, future CS2 schema |
+| Paths | Lazy artifact-root resolution independent of checkout/install location; CLI override then YAML then `./artifacts`, relative to invocation directory | Run/artifact lifecycle and records |
+| Simulation | `lynxai.environments.Smoke2DEnv`, Gymnasium spaces/reset/step/seeding, explicit termination/truncation and cleanup | Trainer integration |
+| Tests | 95 tests passing, including behavioral/contract/config/diagnostic coverage and Gymnasium/SB3 checks; installed wheel verified outside checkout | Training, checkpoint, evaluation, and live host tests |
+| Dependencies/setup | Python 3.12 workflow, committed uv lock, CPU PyTorch builds on Windows/Linux, development tools and PPO extra, README, Windows/Linux CI | GPU/game-host setup and measured host evidence |
 | CS2 and application | No CS2 adapter or functioning GUI | Integration feasibility, control loop, demonstrations, recording, UI |
 
-During cloud setup, the six existing tests, CLI diagnostics, dependency checks, and source/wheel builds passed with CPU PyTorch. This validates the existing foundation only. No learned policy or CS2 interaction has been demonstrated.
+M0 preserves the original simulation physics, action ordering, and rewards. The public import is now `lynxai.environments`; reset returns `(obs, info)` and step returns `(obs, reward, terminated, truncated, info)`. Goal/fall terminate; time limits truncate, with existing outcome precedence retained. No compatibility shim for the old top-level environment package remains.
 
-Two existing details need deliberate migration:
+The local completion checks include both environment checkers, source/wheel builds, and a fresh wheel installation outside the checkout. No learned policy or CS2 interaction has been demonstrated.
 
-- The simulation currently lives outside `src/lynxai`, so configured package discovery does not include it in the installed distribution.
-- Its API returns `obs` from reset and a four-item tuple from step. The target Gymnasium API returns `(obs, info)` and distinguishes termination from truncation.
-
-The existing `configs/baseline.yaml` is a scaffold. Its observation, action, and reward settings do not define an implemented CS2 experiment and should not silently become the research baseline.
+`configs/smoke2d.yaml` defines the implemented smoke task and matches the bundled default resource. `configs/baseline.yaml` remains a separate CS2 scaffold; it must not silently become the research baseline.
 
 ## 3. Working decisions and scope
 
@@ -570,7 +567,7 @@ Run saved checkpoints against the same versioned scenario suite and show scores 
 
 ### CLI as the operational interface
 
-Only `lynxai doctor` is implemented today. Add commands when their backend capability exists:
+`lynxai doctor --profile core|training [--config SMOKE_YAML] [--artifact-root PATH]` is implemented today. The `cs2` profile and other commands below remain planned; add them when their backend capability exists:
 
 | Planned command | Purpose |
 |---|---|
@@ -652,6 +649,8 @@ The dependency path is **M0 → {M1 and M2} → M3 → M4 → M5**. M1 establish
 Each milestone should end with a short completion note linking code, configs, commands, test results, and artifacts. Numerical thresholds below are initial engineering targets. If a pilot shows that a target is inappropriate, record the reason and revise it before the qualifying run; do not lower a threshold after seeing the result simply to declare success.
 
 ### M0 — Make the existing foundation installable and explicit
+
+**Status:** implemented; Windows CPU acceptance checks passed. [Completion evidence](docs/m0-foundation.md). Windows/Linux CI is configured; hosted results are pending.
 
 **Goal:** a new developer can install the project and understand exactly what currently works.
 
@@ -750,9 +749,9 @@ A branch is complete when it answers its question with evidence. Promoting a new
 
 These are the immediate backlog, in order. They replace generic instructions to create a repository or package that already exists.
 
-- [ ] **Normalize the environment API.** Package Smoke2D under `lynxai`, expose Gymnasium spaces, distinguish goal/fall termination from time-limit truncation, and update the existing tests without losing their behavioral coverage.
-- [ ] **Define the smoke experiment.** Add a dedicated validated config for the five-value observation and four actions. Keep the CS2 scaffold separate.
-- [ ] **Make setup repeatable.** Document installation of core/test/PPO dependencies, select compatible pinned versions, and verify the installed package from outside the checkout.
+- [x] **Normalize the environment API.** Smoke2D is packaged under `lynxai`, exposes Gymnasium spaces and termination/truncation semantics, and retains behavioral coverage. See M0 evidence.
+- [x] **Define the smoke experiment.** Versioned smoke YAML and shared physics validation are implemented; the CS2 scaffold remains separate.
+- [x] **Make setup repeatable.** Python 3.12, uv lock, CPU/test/PPO setup, CI, and isolated wheel verification are implemented and documented. Local Windows checks passed; hosted CI is pending.
 - [ ] **Introduce minimal run records.** Create a unique run directory with resolved config, manifest, metrics, and clear final status. Support a configurable artifact root.
 - [ ] **Add baseline evaluation.** Run random and scripted agents through the same evaluator; save per-episode outcomes and seed lists.
 - [ ] **Integrate library PPO.** Train the small MLP with explicit budgets and diagnostics. Confirm real updates occur.

@@ -3,12 +3,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from environments import ACTION_INDEX, Smoke2DEnv
+from lynxai.environments import ACTION_INDEX, Smoke2DEnv
 
 
 def test_reset_returns_expected_shape_and_dtype() -> None:
     env = Smoke2DEnv()
-    obs = env.reset(seed=0)
+    obs, _ = env.reset(seed=0)
     assert obs.shape == (5,)
     assert obs.dtype == np.float32
 
@@ -18,8 +18,8 @@ def test_walking_off_the_edge_without_jumping_falls() -> None:
     env.reset(seed=0)
     outcome = None
     for _ in range(300):
-        _, _, done, info = env.step(ACTION_INDEX["right"])
-        if done:
+        _, _, terminated, truncated, info = env.step(ACTION_INDEX["right"])
+        if terminated or truncated:
             outcome = info["outcome"]
             break
     assert outcome == "fell"
@@ -28,7 +28,7 @@ def test_walking_off_the_edge_without_jumping_falls() -> None:
 def test_jumping_the_gap_reaches_the_goal() -> None:
     for seed in range(5):
         env = Smoke2DEnv()
-        obs = env.reset(seed=seed)
+        obs, _ = env.reset(seed=seed)
         jumped = False
         outcome = None
         for _ in range(300):
@@ -38,8 +38,8 @@ def test_jumping_the_gap_reaches_the_goal() -> None:
                 action = ACTION_INDEX["jump"]
             else:
                 action = ACTION_INDEX["right"]
-            obs, _, done, info = env.step(action)
-            if done:
+            obs, _, terminated, truncated, info = env.step(action)
+            if terminated or truncated:
                 outcome = info["outcome"]
                 break
         assert outcome == "goal", f"seed {seed}: expected goal, got {outcome}"
@@ -50,8 +50,8 @@ def test_standing_still_times_out() -> None:
     env.reset(seed=0)
     outcome = None
     for _ in range(300):
-        _, _, done, info = env.step(ACTION_INDEX["noop"])
-        if done:
+        _, _, terminated, truncated, info = env.step(ACTION_INDEX["noop"])
+        if terminated or truncated:
             outcome = info["outcome"]
             break
     assert outcome == "timeout"

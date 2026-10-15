@@ -1,4 +1,8 @@
 # Project runtime artifacts
+artifacts/
+dist/
+build/
+.pytest_cache/
 runs/
 checkpoints/
 clips/

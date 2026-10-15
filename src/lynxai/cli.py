@@ -1,119 +1,119 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
+from importlib import import_module
 from pathlib import Path
-from typing import Any
+from tempfile import TemporaryFile
+from typing import Callable
 
-from lynxai.utils.config import load_config
-from lynxai.utils.paths import CHECKPOINT_DIR, CLIPS_DIR, DATA_DIR, LOG_DIR, PROJECT_ROOT, RUNS_DIR, ensure_directories
-
-
-def _check_python() -> tuple[bool, str]:
-    version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    ok = sys.version_info >= (3, 10)
-    return ok, version
+from lynxai.utils.paths import resolve_artifact_root
 
 
-def _check_torch() -> tuple[bool, str]:
-    try:
-        import torch
-
-        return True, f"torch {torch.__version__}"
-    except Exception as exc:
-        return False, str(exc)
-
-
-def _check_cuda() -> tuple[bool, str]:
-    try:
-        import torch
-
-        available = bool(torch.cuda.is_available())
-        if available:
-            return True, f"CUDA available ({torch.cuda.device_count()} device(s))"
-        return True, "CUDA unavailable (CPU-only environment)"
-    except Exception as exc:
-        return False, str(exc)
+def _writable(root: Path) -> str:
+    root.mkdir(parents=True, exist_ok=True)
+    # Probe actual writes: os.access does not reliably reflect Windows ACLs.
+    with TemporaryFile(dir=root) as probe:
+        probe.write(b"lynxai doctor")
+        probe.flush()
+    return str(root)
 
 
-def _check_paths() -> tuple[bool, str]:
-    required = [DATA_DIR, RUNS_DIR, CHECKPOINT_DIR, CLIPS_DIR, LOG_DIR]
-    try:
-        for path in required:
-            path.mkdir(parents=True, exist_ok=True)
-            if not path.exists():
-                raise FileNotFoundError(f"missing: {path}")
-            if not os.access(path, os.W_OK):
-                raise PermissionError(f"not writable: {path}")
-        return True, ", ".join(str(p.relative_to(PROJECT_ROOT)) for p in required)
-    except Exception as exc:
-        return False, str(exc)
+def _dependency(module: str) -> str:
+    dependency = import_module(module)
+    return f"{module} {dependency.__version__}"
 
 
-def _check_baseline() -> tuple[bool, str]:
-    config_path = PROJECT_ROOT / "configs" / "baseline.yaml"
-    try:
-        cfg = load_config(config_path)
-        return True, f"{cfg.experiment.name} @ {cfg.training.algorithm}"
-    except Exception as exc:
-        return False, str(exc)
+def doctor(
+    profile: str = "core",
+    config: str | Path | None = None,
+    artifact_root: str | Path | None = None,
+) -> int:
+    failed = False
 
+    def check(label: str, operation: Callable[[], object]) -> object | None:
+        nonlocal failed
+        try:
+            result = operation()
+        except Exception as exc:
+            failed = True
+            print(f"FAIL  {label}: {exc}")
+            return None
+        print(f"PASS  {label}: {result}")
+        return result
 
-def _render_table(rows: list[tuple[str, str, str]]) -> str:
-    headers = ("Check", "Status", "Details")
-    widths = [len(h) for h in headers]
-    for label, status, detail in rows:
-        widths[0] = max(widths[0], len(label))
-        widths[1] = max(widths[1], len(status))
-        widths[2] = max(widths[2], len(detail))
+    def python_version() -> str:
+        if sys.version_info < (3, 12):
+            raise RuntimeError("Python 3.12 or newer required; use uv sync --python 3.12")
+        return sys.version.split()[0]
 
-    border = "+-" + "-+-".join("-" * w for w in widths) + "-+"
-    lines = [border]
-    lines.append(f"| {headers[0]:<{widths[0]}} | {headers[1]:<{widths[1]}} | {headers[2]:<{widths[2]}} |")
-    lines.append(border)
-    for label, status, detail in rows:
-        lines.append(f"| {label:<{widths[0]}} | {status:<{widths[1]}} | {detail:<{widths[2]}} |")
-    lines.append(border)
-    return "\n".join(lines)
+    check("Python", python_version)
 
+    def resource() -> str:
+        from lynxai.utils.smoke_config import default_config_text
 
-def doctor() -> int:
-    checks: list[tuple[str, str, str]] = []
+        default_config_text()
+        return "bundled smoke2d.yaml"
 
-    ok, value = _check_python()
-    checks.append(("Python version", "PASS" if ok else "FAIL", value))
+    check("Package resources", resource)
 
-    ok, value = _check_torch()
-    checks.append(("PyTorch import", "PASS" if ok else "FAIL", value))
+    def configuration():
+        from lynxai.utils.smoke_config import load_smoke_config
 
-    ok, value = _check_cuda()
-    checks.append(("GPU visibility", "PASS" if ok else "FAIL", value))
+        return load_smoke_config(config)
 
-    ok, value = _check_paths()
-    checks.append(("Project dirs", "PASS" if ok else "FAIL", value))
+    cfg = check("Smoke configuration", configuration)
+    if cfg is not None:
+        def storage() -> str:
+            return _writable(resolve_artifact_root(artifact_root, cfg.experiment.artifact_root))
 
-    ok, value = _check_baseline()
-    checks.append(("baseline.yaml", "PASS" if ok else "FAIL", value))
+        check("Artifact root", storage)
 
-    print(_render_table(checks))
-    return 0 if all(status == "PASS" for _, status, _ in checks) else 1
+        def environment() -> str:
+            from gymnasium.utils.env_checker import check_env
+            from lynxai.environments import Smoke2DEnv
+
+            env = Smoke2DEnv(cfg.environment)
+            try:
+                check_env(env, skip_render_check=True)
+            finally:
+                env.close()
+            return "Gymnasium contract verified (rendering unavailable)"
+
+        check("Smoke2D", environment)
+    else:
+        print("SKIP  Artifact root and Smoke2D: correct the configuration first")
+
+    if profile == "training":
+        torch = check("PyTorch", lambda: _dependency("torch"))
+        check("Stable-Baselines3", lambda: _dependency("stable_baselines3"))
+        if torch is not None:
+            def cuda() -> str:
+                available = import_module("torch").cuda.is_available()
+                return "CUDA available" if available else "CUDA unavailable; CPU is supported"
+
+            check("Compute (informational)", cuda)
+        if failed:
+            print("Training dependencies: run uv sync --locked --extra ppo")
+    print("INFO  CS2 readiness: unverified; no live host checks performed")
+    return int(failed)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lynxai", description="lynxai project tools")
     subparsers = parser.add_subparsers(dest="command")
-    subparsers.add_parser("doctor", help="run environment checks")
+    diagnostics = subparsers.add_parser("doctor", help="check core or training prerequisites")
+    diagnostics.add_argument("--profile", choices=("core", "training"), default="core")
+    diagnostics.add_argument("--config", type=Path, help="Smoke2D YAML; defaults to bundled config")
+    diagnostics.add_argument("--artifact-root", type=Path, help="override configured artifact root")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-
     if args.command == "doctor":
-        return doctor()
-
+        return doctor(args.profile, args.config, args.artifact_root)
     parser.print_help()
     return 0
 

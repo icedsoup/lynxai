@@ -1,0 +1,28 @@
+name: Foundation checks
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  foundation:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.13"
+          enable-cache: true
+      - name: Install locked Python 3.12 environment
+        run: uv sync --locked --python 3.12 --extra ppo
+      - name: Fast tests and PPO environment compatibility
+        run: uv run --locked --extra ppo pytest -q
+      - name: Build source and wheel distributions
+        run: uv run --locked --extra ppo python -m build
+      - name: Verify installed wheel outside checkout
+        run: uv run --locked --extra ppo python scripts/check_wheel.py

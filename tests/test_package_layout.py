@@ -10,6 +10,8 @@ def test_package_modules_are_namespaced() -> None:
     assert importlib.util.find_spec("lynxai") is not None
     assert importlib.util.find_spec("lynxai.utils") is not None
     assert importlib.util.find_spec("lynxai.app") is not None
+    assert importlib.util.find_spec("lynxai.environments") is not None
+    assert not (root / "environments" / "smoke2d.py").exists()
     assert importlib.util.find_spec("utils") is None
     assert importlib.util.find_spec("app") is None
 
