@@ -1,10 +1,10 @@
 # lynxai
 
-I’m building lynxai to run reinforcement learning experiments in Counter-Strike 2. The first test is a tiny Gymnasium environment called Smoke2D, where an agent has to jump a gap to reach the goal. It gives me a quick way to test training, checkpointing, and evaluation before bringing CS2 into the loop.
+Reinforcement learning experiments in Counter-Strike 2. First test: Smoke2D, where an agent has to jump a gap to reach the goal. Testing training, checkpointing, and evaluation before bringing integrating CS2.
 
 The scripted controller cleared the gap on all 100 validation starts. Both PPO pilots scored 0/100. Getting a learned policy across reliably is the next step.
 
-## Try it
+## usage
 
 With Python 3.12 and [uv](https://docs.astral.sh/uv/getting-started/installation/) installed, run these from the repo:
 
@@ -23,10 +23,11 @@ uv run --locked --extra ppo tensorboard --logdir artifacts/runs
 
 Run `uv run --locked --extra ppo pytest -q` to run the test suite.
 
-## Roadmap
+## future
 
 - [x] Build the Smoke2D environment and reference controllers.
 - [x] Add PPO training, checkpoint resume, and repeatable evaluation.
 - [ ] Train a policy that reliably clears the gap on held-out starts.
 - [ ] Run a repeatable training and evaluation loop in a controlled CS2 scenario.
 - [ ] Compare learning from demonstrations with training from scratch.
+- [ ] ...
