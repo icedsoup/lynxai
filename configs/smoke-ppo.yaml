@@ -1,0 +1,23 @@
+schema_version: 1
+name: smoke-ppo
+seed: 42
+artifact_root: ./artifacts
+task_config: smoke2d.yaml
+training:
+  total_steps: 65536
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  learning_rate: 0.0003
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.0
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  hidden_sizes: [64, 64]
+checkpoints:
+  every_updates: 10
+  max_bytes: 1073741824
+resources:
+  max_seconds: 900
