@@ -2,7 +2,6 @@
 
 Reinforcement learning experiments in Counter-Strike 2. First test: Smoke2D, where an agent has to jump a gap to reach the goal. Testing training, checkpointing, and evaluation before bringing integrating CS2.
 
-The scripted controller cleared the gap on all 100 validation starts. Both PPO pilots scored 0/100. Getting a learned policy across reliably is the next step.
 
 ## usage
 
